@@ -270,8 +270,6 @@ class _OeeSummaryCard extends StatelessWidget {
               _SubMetric(label: 'Stuck', value: timerStuck, color: AppColors.red),
               const SizedBox(width: 8),
               _SubMetric(label: 'No Feed', value: timerNoFeed, color: AppColors.orange),
-              const SizedBox(width: 8),
-              _SubMetric(label: 'Tonnage', value: '${tonnage.toStringAsFixed(1)} t', color: AppColors.blue),
             ],
           ),
         ],

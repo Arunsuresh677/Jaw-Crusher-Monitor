@@ -391,8 +391,6 @@ class _ShiftCard extends StatelessWidget {
             children: [
               _ShiftMetric(label: 'Elapsed', value: '${shift.elapsedMinutes.toStringAsFixed(0)}m', color: AppColors.blue),
               const SizedBox(width: 10),
-              _ShiftMetric(label: 'Tonnage', value: '${state.tonnageActual.toStringAsFixed(1)} t', color: AppColors.amber),
-              const SizedBox(width: 10),
               _ShiftMetric(label: 'Availability', value: '${state.availabilityPct.toStringAsFixed(1)}%', color: AppColors.green),
             ],
           ),
