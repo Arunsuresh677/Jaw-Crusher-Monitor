@@ -153,19 +153,32 @@ class CrusherCamera:
         self._set_status("live")
 
         # ── Frame loop — runs until stopped or stream dies ─────────────
+        _fail_count = 0
+        _MAX_FAILS  = 15   # ~1.5s at 10fps before declaring error
+
         while self.running:
             t0 = time.time()
 
             ret, frame = self.get_latest_frame()
 
             if not ret or frame is None:
-                log.error(
-                    "RTSP stream lost mid-session. "
-                    "Call /api/camera/restart to reconnect."
-                )
-                self._set_status("error")
-                self.running = False   # stop — no auto-retry
-                break
+                _fail_count += 1
+                log.warning(f"RTSP frame read failed ({_fail_count}/{_MAX_FAILS})")
+                if _fail_count >= _MAX_FAILS:
+                    log.error(
+                        "RTSP stream lost — too many consecutive failures. "
+                        "Call /api/camera/restart to reconnect."
+                    )
+                    self._set_status("error")
+                    self.running = False
+                    break
+                time.sleep(0.1)
+                continue
+
+            # Frame OK — reset failure counter
+            _fail_count = 0
+            if self.status != "live":
+                self._set_status("live")
 
             # ── YOLO inference ────────────────────────────────────────
             try:
