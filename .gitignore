@@ -1,0 +1,42 @@
+# Environment / secrets — commit .env.example but never the real .env
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Model weights (large binary)
+*.pt
+*.pth
+
+# Output frames / logs
+output_frames/
+logs/
+
+# Database (include WAL/SHM side-files)
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# Flutter / Dart generated files
+crusher_monitor_app/.dart_tool/
+crusher_monitor_app/.flutter-plugins
+crusher_monitor_app/.flutter-plugins-dependencies
+crusher_monitor_app/build/
