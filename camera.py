@@ -189,77 +189,77 @@ class CrusherCamera:
                 if self.status != "live":
                     self._set_status("live")
 
-            # ── YOLO inference ────────────────────────────────────────
-            try:
-                results   = self.model(frame, conf=CONF_THRESHOLD, verbose=False)
-                result    = results[0]
-                annotated = result.plot()
-                label     = "unknown"
-                conf      = 0.0
-
-                if result.probs is not None:
-                    top_id = int(result.probs.top1)
-                    conf   = float(result.probs.top1conf)
-                    label  = result.names[top_id].lower().replace("_", " ")
-
-            except Exception as e:
-                log.error(f"YOLO inference error: {e}")
-                continue
-
-            # ── Crusher logic update ──────────────────────────────────
-            crusher_logic.update(label, conf)
-            crusher_state = crusher_logic.get_state()
-
-            # ── On-frame overlay ──────────────────────────────────────
-            if not HEADLESS:
-                target_hz    = VFD_SPEEDS.get(label, 0)
-                status       = crusher_state["machine_status"]
-                status_color = (0, 255, 0) if status == "NORMAL" else (0, 80, 255)
-                cv2.rectangle(annotated, (20, 20), (620, 200), (30, 30, 30), -1)
-                cv2.putText(annotated, f"AI State : {label}",
-                            (40, 60),  cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                cv2.putText(annotated, f"VFD      : {target_hz} Hz",
-                            (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                cv2.putText(annotated, f"Status   : {status}",
-                            (40, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
-                cv2.putText(annotated, f"Conf     : {conf:.2f}",
-                            (40, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
-
-            # ── Encode frame to base64 for WebSocket ──────────────────
-            try:
-                _, buffer = cv2.imencode(
-                    ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75]
-                )
-                frame_b64 = base64.b64encode(buffer).decode("utf-8")
-            except Exception as e:
-                log.error(f"Frame encode error: {e}")
-                continue
-
-            # ── Save annotated frame if enabled ───────────────────────
-            if SAVE_ANNOTATED:
+                # ── YOLO inference ────────────────────────────────────
                 try:
-                    os.makedirs(OUTPUT_DIR, exist_ok=True)
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    cv2.imwrite(f"{OUTPUT_DIR}/frame_{ts}.jpg", annotated)
+                    results   = self.model(frame, conf=CONF_THRESHOLD, verbose=False)
+                    result    = results[0]
+                    annotated = result.plot()
+                    label     = "unknown"
+                    conf      = 0.0
+
+                    if result.probs is not None:
+                        top_id = int(result.probs.top1)
+                        conf   = float(result.probs.top1conf)
+                        label  = result.names[top_id].lower().replace("_", " ")
+
                 except Exception as e:
-                    log.error(f"Frame save error: {e}")
+                    log.error(f"YOLO inference error: {e}")
+                    continue
 
-            # ── Show window if not headless ───────────────────────────
-            if not HEADLESS:
-                cv2.imshow("Crusher YOLO Live", annotated)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    log.info("Q pressed. Stopping.")
-                    self.running = False
-                    break
+                # ── Crusher logic update ──────────────────────────────
+                crusher_logic.update(label, conf)
+                crusher_state = crusher_logic.get_state()
 
-            # ── FPS control ───────────────────────────────────────────
-            elapsed    = time.time() - t0
-            fps        = 1.0 / elapsed if elapsed > 0 else 0
-            self._update(frame_b64, crusher_state, fps)
+                # ── On-frame overlay ──────────────────────────────────
+                if not HEADLESS:
+                    target_hz    = VFD_SPEEDS.get(label, 0)
+                    status       = crusher_state["machine_status"]
+                    status_color = (0, 255, 0) if status == "NORMAL" else (0, 80, 255)
+                    cv2.rectangle(annotated, (20, 20), (620, 200), (30, 30, 30), -1)
+                    cv2.putText(annotated, f"AI State : {label}",
+                                (40, 60),  cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                    cv2.putText(annotated, f"VFD      : {target_hz} Hz",
+                                (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                    cv2.putText(annotated, f"Status   : {status}",
+                                (40, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
+                    cv2.putText(annotated, f"Conf     : {conf:.2f}",
+                                (40, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
 
-            sleep_time = FRAME_INTERVAL - elapsed
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+                # ── Encode frame to base64 for WebSocket ──────────────
+                try:
+                    _, buffer = cv2.imencode(
+                        ".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75]
+                    )
+                    frame_b64 = base64.b64encode(buffer).decode("utf-8")
+                except Exception as e:
+                    log.error(f"Frame encode error: {e}")
+                    continue
+
+                # ── Save annotated frame if enabled ───────────────────
+                if SAVE_ANNOTATED:
+                    try:
+                        os.makedirs(OUTPUT_DIR, exist_ok=True)
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                        cv2.imwrite(f"{OUTPUT_DIR}/frame_{ts}.jpg", annotated)
+                    except Exception as e:
+                        log.error(f"Frame save error: {e}")
+
+                # ── Show window if not headless ───────────────────────
+                if not HEADLESS:
+                    cv2.imshow("Crusher YOLO Live", annotated)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        log.info("Q pressed. Stopping.")
+                        self.running = False
+                        break
+
+                # ── FPS control ───────────────────────────────────────
+                elapsed    = time.time() - t0
+                fps        = 1.0 / elapsed if elapsed > 0 else 0
+                self._update(frame_b64, crusher_state, fps)
+
+                sleep_time = FRAME_INTERVAL - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
         # ── Cleanup ───────────────────────────────────────────────────
         if self.cap:
