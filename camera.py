@@ -131,54 +131,63 @@ class CrusherCamera:
             }
 
     # ------------------------------------------------------------------
-    # Main camera loop — ONE connection attempt, no auto-retry
+    # Main camera loop — auto-reconnect on stream loss
     # ------------------------------------------------------------------
     def _loop(self):
-        self._set_status("connecting")
+        _MAX_FAILS    = 15    # consecutive frame failures before reconnect
+        _MAX_RETRIES  = 10    # reconnect attempts before giving up
+        _RETRY_DELAY  = 5     # seconds between reconnect attempts
+        _retry_count  = 0
 
-        # ── Single connection attempt ──────────────────────────────────
-        self.cap = self.connect_rtsp()
+        while self.running and _retry_count <= _MAX_RETRIES:
 
-        if not self.cap.isOpened():
-            log.error(
-                "RTSP connection FAILED. "
-                "Camera not reached or wrong credentials. "
-                "Call /api/camera/restart to try again."
-            )
-            self._set_status("error")
-            self.running = False   # stop completely — no retry
-            return
+            # ── Connect ───────────────────────────────────────────────
+            self._set_status("connecting")
+            log.info(f"RTSP connect attempt {_retry_count + 1}/{_MAX_RETRIES + 1}")
+            self.cap = self.connect_rtsp()
 
-        log.info("RTSP connected successfully.")
-        self._set_status("live")
-
-        # ── Frame loop — runs until stopped or stream dies ─────────────
-        _fail_count = 0
-        _MAX_FAILS  = 15   # ~1.5s at 10fps before declaring error
-
-        while self.running:
-            t0 = time.time()
-
-            ret, frame = self.get_latest_frame()
-
-            if not ret or frame is None:
-                _fail_count += 1
-                log.warning(f"RTSP frame read failed ({_fail_count}/{_MAX_FAILS})")
-                if _fail_count >= _MAX_FAILS:
-                    log.error(
-                        "RTSP stream lost — too many consecutive failures. "
-                        "Call /api/camera/restart to reconnect."
-                    )
-                    self._set_status("error")
+            if not self.cap.isOpened():
+                _retry_count += 1
+                log.error(
+                    f"RTSP connection failed (attempt {_retry_count}). "
+                    f"Retrying in {_RETRY_DELAY}s..."
+                )
+                self._set_status("error")
+                if _retry_count > _MAX_RETRIES:
+                    log.error("Max reconnect attempts reached. Giving up.")
                     self.running = False
-                    break
-                time.sleep(0.1)
+                    return
+                time.sleep(_RETRY_DELAY)
                 continue
 
-            # Frame OK — reset failure counter
-            _fail_count = 0
-            if self.status != "live":
-                self._set_status("live")
+            log.info("RTSP connected successfully.")
+            self._set_status("live")
+            _retry_count = 0   # reset on successful connect
+            _fail_count  = 0
+
+            # ── Frame loop ────────────────────────────────────────────
+            while self.running:
+                t0 = time.time()
+
+                ret, frame = self.get_latest_frame()
+
+                if not ret or frame is None:
+                    _fail_count += 1
+                    log.warning(f"RTSP frame read failed ({_fail_count}/{_MAX_FAILS})")
+                    if _fail_count >= _MAX_FAILS:
+                        log.error("RTSP stream lost — attempting reconnect...")
+                        self._set_status("error")
+                        if self.cap:
+                            self.cap.release()
+                            self.cap = None
+                        break   # break inner loop → outer loop reconnects
+                    time.sleep(0.1)
+                    continue
+
+                # Frame OK — reset failure counter
+                _fail_count = 0
+                if self.status != "live":
+                    self._set_status("live")
 
             # ── YOLO inference ────────────────────────────────────────
             try:
