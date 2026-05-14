@@ -22,6 +22,47 @@ from reportlab.platypus import (
 
 log = logging.getLogger(__name__)
 
+
+# ── Time helpers ─────────────────────────────────────────────────────────
+
+def _to_12h(dt_str: str) -> str:
+    """Convert 'YYYY-MM-DD HH:MM:SS' or 'HH:MM:SS' to 12-hour format."""
+    if not dt_str or dt_str in ("—", "None", "null"):
+        return "—"
+    try:
+        s = dt_str[:19]
+        fmt = "%Y-%m-%d %H:%M:%S" if len(s) == 19 and "-" in s else "%H:%M:%S"
+        dt = datetime.strptime(s, fmt)
+        return dt.strftime("%I:%M:%S %p").lstrip("0") or "12:00:00 AM"
+    except Exception:
+        return dt_str
+
+
+def _hms_to_secs(hms: str) -> int:
+    """Convert HH:MM:SS duration string to total seconds."""
+    try:
+        h, m, s = hms.split(":")
+        return int(h) * 3600 + int(m) * 60 + int(s)
+    except Exception:
+        return 0
+
+
+def _secs_to_hms(secs: int) -> str:
+    """Convert total seconds to HH:MM:SS duration string."""
+    secs = max(0, int(secs))
+    return f"{secs // 3600:02d}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
+
+
+def _calc_elapsed(start_str: str, end_str: str) -> str:
+    """Calculate End − Start and return as HH:MM:SS."""
+    try:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        start = datetime.strptime(start_str[:19], fmt)
+        end   = datetime.strptime(end_str[:19],   fmt)
+        return _secs_to_hms(int((end - start).total_seconds()))
+    except Exception:
+        return "—"
+
 # ── Brand colours ────────────────────────────────────────────────────────
 AMBER  = colors.HexColor("#F5A623")
 NAVY   = colors.HexColor("#1A2B5E")
@@ -135,84 +176,103 @@ def build_shift_pdf(shift_rows: list[dict], live_state: dict) -> bytes:
     # ── Daily Summary (the four metrics that matter) ──────────────
     story.append(Paragraph("Daily Summary", S["section"]))
 
-    t_run  = live_state.get("timer_run",     "00:00:00")
     t_stk  = live_state.get("timer_stuck",   "00:00:00")
     t_nfd  = live_state.get("timer_no_feed", "00:00:00")
     avail  = live_state.get("availability_pct", 0)
 
-    # Production start time — first NORMAL detection today
-    first_run_str  = live_state.get("first_run_at", None)
-    prod_start_disp = first_run_str[11:19] if first_run_str and len(first_run_str) >= 19 else "Not yet started"
+    # ── Production Start Time (first NORMAL detection) ────────────────────
+    first_run_str   = live_state.get("first_run_at")
+    prod_start_disp = _to_12h(first_run_str) if first_run_str else "Not yet started"
 
-    # Model session start / end
-    sess_start_str  = live_state.get("session_start", "—")
-    last_act_str    = live_state.get("last_active",   "—")
-    sess_start_disp = sess_start_str[11:19] if len(sess_start_str) >= 19 else sess_start_str
-    last_act_disp   = last_act_str[11:19]   if len(last_act_str)   >= 19 else last_act_str
-
-    # If last_active is within the last minute, treat as "currently running"
+    # ── End Time (last AI frame — if recent, show "Running") ──────────────
+    last_act_str  = live_state.get("last_active", "—")
+    end_time_disp = _to_12h(last_act_str)
     try:
-        last_dt = datetime.strptime(last_act_str, "%Y-%m-%d %H:%M:%S")
+        last_dt = datetime.strptime(last_act_str[:19], "%Y-%m-%d %H:%M:%S")
         if (datetime.now() - last_dt).total_seconds() < 60:
-            last_act_disp = f"running (last frame {last_act_disp})"
+            end_time_disp = f"Running  ({_to_12h(last_act_str)})"
     except Exception:
         pass
 
-    model_window = f"{sess_start_disp}  →  {last_act_disp}"
+    # ── Total Run Time = End − Production Start ───────────────────────────
+    if first_run_str and last_act_str and last_act_str != "—":
+        total_run_hms = _calc_elapsed(first_run_str, last_act_str)
+    else:
+        total_run_hms = "—"
 
-    # Row indices (1-based, header = 0):
-    # 1 = Production Start Time
-    # 2 = Total Run Time
-    # 3 = Stone Stuck Time
-    # 4 = No Raw Material Time
-    # 5 = Model Active Window
-    # 6 = Availability
+    # ── Total Production Time = Total Run − (Stuck + No Feed) ─────────────
+    run_secs  = _hms_to_secs(total_run_hms) if total_run_hms != "—" else 0
+    prod_secs = max(0, run_secs - _hms_to_secs(t_stk) - _hms_to_secs(t_nfd))
+    total_prod_hms = _secs_to_hms(prod_secs) if run_secs > 0 else "—"
+
+    # ── Model Active Window ───────────────────────────────────────────────
+    sess_start_str  = live_state.get("session_start", "—")
+    model_window    = f"{_to_12h(sess_start_str)}  →  {end_time_disp}"
+
+    # Row layout (header = row 0):
+    # 1  Production Start Time  — blue
+    # 2  End Time               — grey
+    # 3  Total Run Time         — green
+    # 4  Stone Stuck Time       — red
+    # 5  No Raw Material Time   — orange
+    # 6  Total Production Time  — green bold
+    # 7  Model Active Window    — neutral
+    # 8  Availability           — dynamic colour
     summary_data = [
-        ["Metric",                          "Value"],
-        ["Production Start Time",           prod_start_disp],
-        ["Total Run Time (today)",          t_run],
-        ["Stone Stuck Time",                t_stk],
-        ["No Raw Material Time",            t_nfd],
-        ["Model Active Window (today)",     model_window],
-        ["Availability",                    f"{avail:.1f} %"],
+        ["Metric",                      "Value"],
+        ["Production Start Time",       prod_start_disp],
+        ["End Time",                    end_time_disp],
+        ["Total Run Time",              total_run_hms],
+        ["Stone Stuck Time",            t_stk],
+        ["No Raw Material Time",        t_nfd],
+        ["Total Production Time",       total_prod_hms],
+        ["Model Active Window (today)", model_window],
+        ["Availability",                f"{avail:.1f} %"],
     ]
 
     col_w = [80*mm, 80*mm]
     summary_table = Table(summary_data, colWidths=col_w)
     summary_table.setStyle(TableStyle([
         # Header row
-        ("BACKGROUND",   (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR",    (0, 0), (-1, 0), WHITE),
-        ("FONTNAME",     (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",     (0, 0), (-1, 0), 10),
-        ("ALIGN",        (0, 0), (-1, 0), "LEFT"),
-        # Body
-        ("BACKGROUND",   (0, 1), (0, -1), LIGHT),
-        ("FONTNAME",     (0, 1), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",     (1, 1), (1, -1), "Helvetica"),
-        ("FONTSIZE",     (0, 1), (-1, -1), 10),
-        ("GRID",         (0, 0), (-1, -1), 0.4, colors.HexColor("#D0D4E8")),
+        ("BACKGROUND",    (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR",     (0, 0), (-1, 0), WHITE),
+        ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0, 0), (-1, 0), 10),
+        ("ALIGN",         (0, 0), (-1, 0), "LEFT"),
+        # Body base styles
+        ("BACKGROUND",    (0, 1), (0, -1), LIGHT),
+        ("FONTNAME",      (0, 1), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME",      (1, 1), (1, -1), "Helvetica"),
+        ("FONTSIZE",      (0, 1), (-1, -1), 10),
+        ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#D0D4E8")),
         ("ROWBACKGROUNDS",(0, 1), (-1, -1), [WHITE, colors.HexColor("#F7F8FC")]),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING",   (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 7),
-        ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-        # Production Start — blue
-        ("TEXTCOLOR",    (1, 1), (1, 1), colors.HexColor("#1A6FD4")),
-        ("FONTNAME",     (1, 1), (1, 1), "Helvetica-Bold"),
-        # Total Run Time — green
-        ("TEXTCOLOR",    (1, 2), (1, 2), GREEN),
-        ("FONTNAME",     (1, 2), (1, 2), "Helvetica-Bold"),
-        # Stone Stuck — red
-        ("TEXTCOLOR",    (1, 3), (1, 3), RED),
-        ("FONTNAME",     (1, 3), (1, 3), "Helvetica-Bold"),
-        # No Raw Material — orange
-        ("TEXTCOLOR",    (1, 4), (1, 4), ORANGE),
-        ("FONTNAME",     (1, 4), (1, 4), "Helvetica-Bold"),
-        # Availability — dynamic colour (row 6)
-        ("TEXTCOLOR",    (1, 6), (1, 6), _availability_color(avail)),
-        ("FONTNAME",     (1, 6), (1, 6), "Helvetica-Bold"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        # Row 1 — Production Start Time — blue
+        ("TEXTCOLOR",     (1, 1), (1, 1), colors.HexColor("#1A6FD4")),
+        ("FONTNAME",      (1, 1), (1, 1), "Helvetica-Bold"),
+        # Row 2 — End Time — grey
+        ("TEXTCOLOR",     (1, 2), (1, 2), GREY),
+        ("FONTNAME",      (1, 2), (1, 2), "Helvetica"),
+        # Row 3 — Total Run Time — green
+        ("TEXTCOLOR",     (1, 3), (1, 3), GREEN),
+        ("FONTNAME",      (1, 3), (1, 3), "Helvetica-Bold"),
+        # Row 4 — Stone Stuck — red
+        ("TEXTCOLOR",     (1, 4), (1, 4), RED),
+        ("FONTNAME",      (1, 4), (1, 4), "Helvetica-Bold"),
+        # Row 5 — No Raw Material — orange
+        ("TEXTCOLOR",     (1, 5), (1, 5), ORANGE),
+        ("FONTNAME",      (1, 5), (1, 5), "Helvetica-Bold"),
+        # Row 6 — Total Production Time — green bold
+        ("TEXTCOLOR",     (1, 6), (1, 6), GREEN),
+        ("FONTNAME",      (1, 6), (1, 6), "Helvetica-Bold"),
+        ("BACKGROUND",    (0, 6), (-1, 6), colors.HexColor("#EAF7F1")),
+        # Row 8 — Availability — dynamic colour
+        ("TEXTCOLOR",     (1, 8), (1, 8), _availability_color(avail)),
+        ("FONTNAME",      (1, 8), (1, 8), "Helvetica-Bold"),
     ]))
     story.append(summary_table)
     story.append(Spacer(1, 14))
@@ -318,14 +378,27 @@ def build_shift_csv(shift_rows: list[dict], live_state: dict | None = None) -> s
     if live_state:
         sess_start = live_state.get("session_start", "—")
         last_act   = live_state.get("last_active",   "—")
+        first_run = live_state.get("first_run_at")
+        last_act  = live_state.get("last_active", "—")
+        t_stk_csv = live_state.get("timer_stuck",   "00:00:00")
+        t_nfd_csv = live_state.get("timer_no_feed", "00:00:00")
+
+        # Total Run Time = End - Start
+        total_run_csv = _calc_elapsed(first_run, last_act) if first_run else "—"
+
+        # Total Production Time = Total Run - Stuck - No Feed
+        r = _hms_to_secs(total_run_csv) if total_run_csv != "—" else 0
+        prod_csv = _secs_to_hms(max(0, r - _hms_to_secs(t_stk_csv) - _hms_to_secs(t_nfd_csv))) if r > 0 else "—"
+
         buf.write("# Daily Summary\n")
         buf.write(f"metric,value\n")
-        buf.write(f"Production Start Time,{live_state.get('first_run_at', 'Not yet started')}\n")
-        buf.write(f"Total Run Time (today),{live_state.get('timer_run', '00:00:00')}\n")
-        buf.write(f"Stone Stuck Time,{live_state.get('timer_stuck', '00:00:00')}\n")
-        buf.write(f"No Raw Material Time,{live_state.get('timer_no_feed', '00:00:00')}\n")
-        buf.write(f"Model Session Start,{sess_start}\n")
-        buf.write(f"Model Last Active,{last_act}\n")
+        buf.write(f"Production Start Time,{_to_12h(first_run) if first_run else 'Not yet started'}\n")
+        buf.write(f"End Time,{_to_12h(last_act)}\n")
+        buf.write(f"Total Run Time,{total_run_csv}\n")
+        buf.write(f"Stone Stuck Time,{t_stk_csv}\n")
+        buf.write(f"No Raw Material Time,{t_nfd_csv}\n")
+        buf.write(f"Total Production Time,{prod_csv}\n")
+        buf.write(f"Model Session Start,{_to_12h(live_state.get('session_start', '—'))}\n")
         buf.write(f"Availability %,{live_state.get('availability_pct', 0)}\n")
         buf.write(f"Tonnage (t),{live_state.get('tonnage_actual', 0)}\n")
         buf.write("\n")

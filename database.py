@@ -94,6 +94,7 @@ async def init_db():
             timestamp        TEXT    NOT NULL,
             shift_type       TEXT    NOT NULL,
             shift_start      TEXT    NOT NULL,
+            first_run_at     TEXT,
             total_runtime    TEXT    NOT NULL,
             total_stuck      TEXT    NOT NULL,
             total_no_feed    TEXT    NOT NULL,
@@ -102,6 +103,14 @@ async def init_db():
             total_alerts     INTEGER NOT NULL
         )
     """)
+
+    # ── Migration: add first_run_at to existing DBs ───────
+    try:
+        await _db.execute("ALTER TABLE shift_reports ADD COLUMN first_run_at TEXT")
+        await _db.commit()
+        log.info("DB migration: added first_run_at column to shift_reports")
+    except Exception:
+        pass  # column already exists — no action needed
 
     await _db.commit()
     log.info("Database initialised at %s (WAL mode)", DB_PATH)
@@ -233,14 +242,15 @@ async def save_shift_report(state: dict):
         async with _write_lock:
             await _db.execute("""
                 INSERT INTO shift_reports
-                    (timestamp, shift_type, shift_start, total_runtime,
-                     total_stuck, total_no_feed, availability_pct,
-                     tonnage_actual, total_alerts)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (timestamp, shift_type, shift_start, first_run_at,
+                     total_runtime, total_stuck, total_no_feed,
+                     availability_pct, tonnage_actual, total_alerts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 state.get("shift", {}).get("shift", "day"),
                 state.get("shift", {}).get("start", ""),
+                state.get("first_run_at"),
                 state.get("timer_run", "00:00:00"),
                 state.get("timer_stuck", "00:00:00"),
                 state.get("timer_no_feed", "00:00:00"),
