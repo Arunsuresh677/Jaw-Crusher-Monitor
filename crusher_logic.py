@@ -157,6 +157,7 @@ class CrusherLogic:
         # ── Session start / last activity (for daily report) ───
         self.session_start  : datetime       = datetime.now()
         self.last_active    : datetime       = datetime.now()
+        self.first_run_at   : Optional[datetime] = None  # first NORMAL status today
 
         # ── VFD ────────────────────────────────────────────────
         self.target_vfd_hz  : int   = 0      # Hz to send to VFD controller
@@ -264,6 +265,9 @@ class CrusherLogic:
 
             # ── Accumulated shift timers ──────────────────────
             if self.machine_status == MachineStatus.NORMAL:
+                # Record first time machine ever went NORMAL this session
+                if self.first_run_at is None:
+                    self.first_run_at = datetime.now()
                 self.timer_run.start()
                 self.timer_stuck.stop()
                 self.timer_no_feed.stop()
@@ -378,6 +382,7 @@ class CrusherLogic:
                 # Model session (for daily report)
                 "session_start"   : self.session_start.strftime("%Y-%m-%d %H:%M:%S"),
                 "last_active"     : self.last_active.strftime("%Y-%m-%d %H:%M:%S"),
+                "first_run_at"    : self.first_run_at.strftime("%Y-%m-%d %H:%M:%S") if self.first_run_at else None,
 
                 # Shift
                 "shift"           : self.shift.to_dict(),
@@ -391,6 +396,7 @@ class CrusherLogic:
         with self._lock:
             self._reset_shift_timers()
             self.tonnage_actual = 0.0
+            self.first_run_at   = None   # reset production start for new shift
             log.info("Shift reset by user.")
 
     # ═══════════════════════════════════════════════════════

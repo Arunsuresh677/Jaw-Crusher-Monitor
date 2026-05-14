@@ -140,9 +140,13 @@ def build_shift_pdf(shift_rows: list[dict], live_state: dict) -> bytes:
     t_nfd  = live_state.get("timer_no_feed", "00:00:00")
     avail  = live_state.get("availability_pct", 0)
 
-    # Model session start / end / duration
-    sess_start_str = live_state.get("session_start", "—")
-    last_act_str   = live_state.get("last_active",   "—")
+    # Production start time — first NORMAL detection today
+    first_run_str  = live_state.get("first_run_at", None)
+    prod_start_disp = first_run_str[11:19] if first_run_str and len(first_run_str) >= 19 else "Not yet started"
+
+    # Model session start / end
+    sess_start_str  = live_state.get("session_start", "—")
+    last_act_str    = live_state.get("last_active",   "—")
     sess_start_disp = sess_start_str[11:19] if len(sess_start_str) >= 19 else sess_start_str
     last_act_disp   = last_act_str[11:19]   if len(last_act_str)   >= 19 else last_act_str
 
@@ -156,8 +160,16 @@ def build_shift_pdf(shift_rows: list[dict], live_state: dict) -> bytes:
 
     model_window = f"{sess_start_disp}  →  {last_act_disp}"
 
+    # Row indices (1-based, header = 0):
+    # 1 = Production Start Time
+    # 2 = Total Run Time
+    # 3 = Stone Stuck Time
+    # 4 = No Raw Material Time
+    # 5 = Model Active Window
+    # 6 = Availability
     summary_data = [
         ["Metric",                          "Value"],
+        ["Production Start Time",           prod_start_disp],
         ["Total Run Time (today)",          t_run],
         ["Stone Stuck Time",                t_stk],
         ["No Raw Material Time",            t_nfd],
@@ -186,17 +198,21 @@ def build_shift_pdf(shift_rows: list[dict], live_state: dict) -> bytes:
         ("TOPPADDING",   (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING",(0, 0), (-1, -1), 7),
         ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
-        # Colour availability row
-        ("TEXTCOLOR",    (1, 5), (1, 5), _availability_color(avail)),
-        ("FONTNAME",     (1, 5), (1, 5), "Helvetica-Bold"),
-        # Highlight the run-time row
-        ("TEXTCOLOR",    (1, 1), (1, 1), GREEN),
+        # Production Start — blue
+        ("TEXTCOLOR",    (1, 1), (1, 1), colors.HexColor("#1A6FD4")),
         ("FONTNAME",     (1, 1), (1, 1), "Helvetica-Bold"),
-        # Highlight stuck & no-feed in colour
-        ("TEXTCOLOR",    (1, 2), (1, 2), RED),
+        # Total Run Time — green
+        ("TEXTCOLOR",    (1, 2), (1, 2), GREEN),
         ("FONTNAME",     (1, 2), (1, 2), "Helvetica-Bold"),
-        ("TEXTCOLOR",    (1, 3), (1, 3), ORANGE),
+        # Stone Stuck — red
+        ("TEXTCOLOR",    (1, 3), (1, 3), RED),
         ("FONTNAME",     (1, 3), (1, 3), "Helvetica-Bold"),
+        # No Raw Material — orange
+        ("TEXTCOLOR",    (1, 4), (1, 4), ORANGE),
+        ("FONTNAME",     (1, 4), (1, 4), "Helvetica-Bold"),
+        # Availability — dynamic colour (row 6)
+        ("TEXTCOLOR",    (1, 6), (1, 6), _availability_color(avail)),
+        ("FONTNAME",     (1, 6), (1, 6), "Helvetica-Bold"),
     ]))
     story.append(summary_table)
     story.append(Spacer(1, 14))
@@ -304,6 +320,7 @@ def build_shift_csv(shift_rows: list[dict], live_state: dict | None = None) -> s
         last_act   = live_state.get("last_active",   "—")
         buf.write("# Daily Summary\n")
         buf.write(f"metric,value\n")
+        buf.write(f"Production Start Time,{live_state.get('first_run_at', 'Not yet started')}\n")
         buf.write(f"Total Run Time (today),{live_state.get('timer_run', '00:00:00')}\n")
         buf.write(f"Stone Stuck Time,{live_state.get('timer_stuck', '00:00:00')}\n")
         buf.write(f"No Raw Material Time,{live_state.get('timer_no_feed', '00:00:00')}\n")
