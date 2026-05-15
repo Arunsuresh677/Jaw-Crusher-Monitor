@@ -3467,6 +3467,17 @@ function closeReportModal(e) {
     if (modal) modal.classList.remove('show');
   }
 }
+/* ── Convert any date string to YYYY-MM-DD for API ── */
+function _toISODate(dateStr) {
+  if (!dateStr || dateStr === '— Select') return new Date().toISOString().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr; // already ISO
+  try {
+    const d = new Date(dateStr);
+    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  } catch(e) {}
+  return new Date().toISOString().slice(0, 10);
+}
+
 /* ── Build from/to date strings for the selected period ── */
 function _reportDates() {
   const period = AnalyticsState.period;
@@ -3481,8 +3492,8 @@ function _reportDates() {
     return { period, from: d.toISOString().slice(0, 10), to: today };
   }
   if (period === 'custom') {
-    const from = AnalyticsState.customFrom || today;
-    const to   = AnalyticsState.customTo   || today;
+    const from = _toISODate(AnalyticsState.customFrom) || today;
+    const to   = _toISODate(AnalyticsState.customTo)   || today;
     return { period, from, to };
   }
   // 1d — today only
