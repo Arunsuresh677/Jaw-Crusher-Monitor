@@ -340,3 +340,74 @@ async def get_state_summary_today():
     except Exception as e:
         log.error("get_state_summary_today error: %s", e)
         return []
+
+
+async def get_period_summary(from_date: str, to_date: str) -> dict:
+    """
+    Aggregate DB data for any date range.
+    from_date / to_date format: 'YYYY-MM-DD'
+    Returns a summary dict used by reports.build_period_*().
+    """
+    try:
+        from_dt = f"{from_date} 00:00:00"
+        to_dt   = f"{to_date} 23:59:59"
+
+        _db.row_factory = aiosqlite.Row
+
+        # ── Jaw states: run / stuck / no-feed counts + first/last timestamps ──
+        cur = await _db.execute("""
+            SELECT
+                COUNT(CASE WHEN machine_status = 'NORMAL'         THEN 1 END) AS run_secs,
+                COUNT(CASE WHEN machine_status = 'STONE STUCK'    THEN 1 END) AS stuck_secs,
+                COUNT(CASE WHEN machine_status = 'NO RAW MATERIAL' THEN 1 END) AS no_feed_secs,
+                MIN(CASE WHEN machine_status = 'NORMAL' THEN timestamp END)    AS first_run_at,
+                MAX(timestamp)                                                  AS last_seen,
+                COUNT(*)                                                        AS total_secs
+            FROM jaw_states
+            WHERE timestamp >= ? AND timestamp <= ?
+        """, (from_dt, to_dt))
+        jaw = dict(await cur.fetchone() or {})
+
+        # ── Alert count for period ────────────────────────────────────────────
+        cur = await _db.execute("""
+            SELECT COUNT(*) AS total_alerts
+            FROM alerts
+            WHERE timestamp >= ? AND timestamp <= ?
+        """, (from_dt, to_dt))
+        alert_row   = await cur.fetchone()
+        total_alerts = int(alert_row[0]) if alert_row else 0
+
+        # ── VFD stats (exclude STOPPED rows) ─────────────────────────────────
+        cur = await _db.execute("""
+            SELECT MAX(vfd_hz) AS peak_vfd,
+                   AVG(vfd_hz) AS avg_vfd
+            FROM vfd_logs
+            WHERE timestamp >= ? AND timestamp <= ?
+              AND machine_status != 'STOPPED'
+        """, (from_dt, to_dt))
+        vfd_row = dict(await cur.fetchone() or {})
+
+        # ── Availability ──────────────────────────────────────────────────────
+        run_secs     = int(jaw.get("run_secs",     0) or 0)
+        stuck_secs   = int(jaw.get("stuck_secs",   0) or 0)
+        no_feed_secs = int(jaw.get("no_feed_secs", 0) or 0)
+        active_secs  = run_secs + stuck_secs + no_feed_secs
+        avail_pct    = round(run_secs / active_secs * 100, 1) if active_secs > 0 else 0.0
+
+        return {
+            "from_date":        from_date,
+            "to_date":          to_date,
+            "run_secs":         run_secs,
+            "stuck_secs":       stuck_secs,
+            "no_feed_secs":     no_feed_secs,
+            "total_secs":       int(jaw.get("total_secs", 0) or 0),
+            "first_run_at":     jaw.get("first_run_at"),
+            "last_seen":        jaw.get("last_seen"),
+            "availability_pct": avail_pct,
+            "total_alerts":     total_alerts,
+            "peak_vfd_hz":      int(vfd_row.get("peak_vfd") or 0),
+            "avg_vfd_hz":       round(float(vfd_row.get("avg_vfd") or 0), 1),
+        }
+    except Exception as e:
+        log.error("get_period_summary error: %s", e)
+        return {}

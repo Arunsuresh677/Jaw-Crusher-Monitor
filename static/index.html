@@ -1475,9 +1475,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
           <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--green)"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
           Export as CSV
         </button>
-        <button class="modal-btn" onclick="exportReport('json')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--blue)"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
-          Export Raw JSON
+        <button class="modal-btn" onclick="exportReport('excel')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#1D6F42"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 16.5l1.5-2.5L8 11.5h1.3l.9 1.6.9-1.6H12.4l-1.5 2.5 1.5 2.5h-1.3l-.9-1.6-.9 1.6H8zm6-5h3.5v1H15v1h2.5v1H15v1h2.5v1H14v-5z"/></svg>
+          Export as Excel
         </button>
         <div class="modal-cancel" onclick="closeReportModal()">Cancel</div>
       </div>
@@ -3467,93 +3467,54 @@ function closeReportModal(e) {
     if (modal) modal.classList.remove('show');
   }
 }
+/* ── Build from/to date strings for the selected period ── */
+function _reportDates() {
+  const period = AnalyticsState.period;
+  const today  = new Date().toISOString().slice(0, 10);  // YYYY-MM-DD
+
+  if (period === '1w') {
+    const d = new Date(); d.setDate(d.getDate() - 6);
+    return { period, from: d.toISOString().slice(0, 10), to: today };
+  }
+  if (period === '1m') {
+    const d = new Date(); d.setDate(d.getDate() - 29);
+    return { period, from: d.toISOString().slice(0, 10), to: today };
+  }
+  if (period === 'custom') {
+    const from = AnalyticsState.customFrom || today;
+    const to   = AnalyticsState.customTo   || today;
+    return { period, from, to };
+  }
+  // 1d — today only
+  return { period: '1d', from: today, to: today };
+}
+
 async function exportReport(format) {
   closeReportModal();
-  const period = AnalyticsState.period;
+  const { period, from, to } = _reportDates();
+  const params = `period=${period}&from_date=${from}&to_date=${to}&_=${Date.now()}`;
+  const labels = { pdf: 'PDF', csv: 'CSV', excel: 'Excel' };
+  const exts   = { pdf: 'pdf', csv: 'csv', excel: 'xlsx' };
+  const label  = labels[format] || format.toUpperCase();
+  const ext    = exts[format]   || format;
 
-  if (format === 'pdf') {
-    showToast('Generating PDF', 'Building shift report…', 'Analytics');
-    try {
-      const resp = await fetch(`/api/reports/shift-pdf?limit=20&_=${Date.now()}`);
-      if (!resp.ok) throw new Error(`Server error ${resp.status}`);
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `crusher_shift_report_${Date.now()}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Report Ready', 'PDF downloaded successfully', 'Analytics');
-    } catch (e) {
-      showToast('Export Failed', e.message, 'Analytics');
-      Logger.error('PDF export error: ' + e.message);
-    }
-    return;
-  }
+  if (!['pdf', 'csv', 'excel'].includes(format)) return;
 
-  if (format === 'csv') {
-    showToast('Generating CSV', 'Fetching shift data…', 'Analytics');
-    try {
-      const resp = await fetch(`/api/reports/shift-csv?limit=20&_=${Date.now()}`);
-      if (!resp.ok) throw new Error(`Server error ${resp.status}`);
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `crusher_shift_report_${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Report Ready', 'CSV downloaded successfully', 'Analytics');
-    } catch (e) {
-      showToast('Export Failed', e.message, 'Analytics');
-      Logger.error('CSV export error: ' + e.message);
-    }
-    return;
-  }
-
-  if (format === 'json') {
-    // Pull real state from the backend so the JSON is honest
-    showToast('Generating JSON', 'Fetching backend state…', 'Analytics');
-    try {
-      const [crusherResp, shiftsResp] = await Promise.all([
-        fetch('/api/crusher'),
-        fetch('/api/db/shifts?limit=20'),
-      ]);
-      if (!crusherResp.ok) throw new Error('crusher state ' + crusherResp.status);
-      if (!shiftsResp.ok)  throw new Error('shift history ' + shiftsResp.status);
-      const liveState = await crusherResp.json();
-      const shifts    = (await shiftsResp.json()).shift_reports || [];
-
-      const payload = {
-        generated:    new Date().toISOString(),
-        period,
-        machine:      'Feeder-1',
-        site:         'Chennimalai, Erode',
-        daily_summary: {
-          total_run_time:    liveState.timer_run     || '00:00:00',
-          stone_stuck_time:  liveState.timer_stuck   || '00:00:00',
-          no_feed_time:      liveState.timer_no_feed || '00:00:00',
-          model_session: {
-            start:       liveState.session_start || null,
-            last_active: liveState.last_active   || null,
-          },
-          availability_pct: liveState.availability_pct || 0,
-          tonnage_actual:   liveState.tonnage_actual   || 0,
-          alerts_active:    liveState.alert_count      || 0,
-        },
-        shift_history: shifts,
-      };
-
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = `crusher_report_${period}_${Date.now()}.json`; a.click();
-      URL.revokeObjectURL(url);
-      showToast('Report Ready', 'JSON downloaded successfully', 'Analytics');
-    } catch (e) {
-      showToast('Export Failed', e.message, 'Analytics');
-      Logger.error('JSON export error: ' + e.message);
-    }
+  showToast(`Generating ${label}`, `Building report for selected period…`, 'Analytics');
+  try {
+    const resp = await fetch(`/api/reports/${format}?${params}`);
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `crusher_report_${from}_${to}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Report Ready', `${label} downloaded successfully`, 'Analytics');
+  } catch (e) {
+    showToast('Export Failed', e.message, 'Analytics');
+    Logger.error(`${label} export error: ` + e.message);
   }
 }
 

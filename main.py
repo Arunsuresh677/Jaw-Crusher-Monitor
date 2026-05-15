@@ -22,9 +22,12 @@ from database import (
     init_db, close_db, save_jaw_state, save_alert, resolve_alert,
     save_vfd_log, save_oee_snapshot, save_shift_report,
     get_alerts_history, get_oee_history, get_vfd_history,
-    get_shift_reports, get_state_summary_today
+    get_shift_reports, get_state_summary_today, get_period_summary,
 )
-from reports import build_shift_pdf, build_shift_csv
+from reports import (
+    build_shift_pdf, build_shift_csv,
+    build_period_pdf, build_period_csv, build_period_excel,
+)
 from vfd_controller import vfd_controller
 
 # ── Logging ──────────────────────────────────────────────────
@@ -489,6 +492,92 @@ async def report_shift_csv(limit: int = 20):
         )
     except Exception as e:
         log.error("CSV report error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Period Report Endpoints (DB-based, any date range) ───────
+
+def _period_dates(period: str, from_date: str = "", to_date: str = "") -> tuple[str, str, str]:
+    """Return (from_date, to_date, label) for a given period string."""
+    from datetime import date, timedelta
+    today = date.today()
+    if period == "1w":
+        return (today - timedelta(days=6)).strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), "1 Week"
+    if period == "1m":
+        return (today - timedelta(days=29)).strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), "1 Month"
+    if period == "custom" and from_date and to_date:
+        return from_date, to_date, "Custom Range"
+    # default: 1d
+    td = today.strftime("%Y-%m-%d")
+    return td, td, "1 Day"
+
+
+@app.get("/api/reports/pdf")
+async def report_pdf(
+    period: str   = "1d",
+    from_date: str = "",
+    to_date: str   = "",
+):
+    """
+    Generate PDF for any period.
+    ?period=1d|1w|1m|custom  &from_date=YYYY-MM-DD &to_date=YYYY-MM-DD
+    """
+    try:
+        fd, td, label = _period_dates(period, from_date, to_date)
+        summary   = await get_period_summary(fd, td)
+        pdf_bytes = await asyncio.to_thread(build_period_pdf, summary, label, fd, td)
+        filename  = f"crusher_report_{fd}_{td}.pdf"
+        return Response(
+            content    = pdf_bytes,
+            media_type = "application/pdf",
+            headers    = {"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        log.error("PDF report error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/reports/csv")
+async def report_csv(
+    period: str   = "1d",
+    from_date: str = "",
+    to_date: str   = "",
+):
+    """Generate CSV for any period."""
+    try:
+        fd, td, label = _period_dates(period, from_date, to_date)
+        summary  = await get_period_summary(fd, td)
+        csv_text = await asyncio.to_thread(build_period_csv, summary, label, fd, td)
+        filename = f"crusher_report_{fd}_{td}.csv"
+        return Response(
+            content    = csv_text,
+            media_type = "text/csv",
+            headers    = {"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        log.error("CSV report error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/reports/excel")
+async def report_excel(
+    period: str   = "1d",
+    from_date: str = "",
+    to_date: str   = "",
+):
+    """Generate Excel .xlsx for any period."""
+    try:
+        fd, td, label  = _period_dates(period, from_date, to_date)
+        summary        = await get_period_summary(fd, td)
+        excel_bytes    = await asyncio.to_thread(build_period_excel, summary, label, fd, td)
+        filename       = f"crusher_report_{fd}_{td}.xlsx"
+        return Response(
+            content    = excel_bytes,
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers    = {"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        log.error("Excel report error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
