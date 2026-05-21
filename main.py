@@ -109,12 +109,21 @@ async def _vfd_background_task():
     """
     Every 1 s: send target_vfd_hz to the VFD (only on change).
     Every 5 s: read Status Word + actual Hz from the drive for diagnostics.
+
+    Auto-control only runs when the camera is actively classifying frames.
+    When the camera is off (startup, fault, manual-test mode) the background
+    task does NOT touch the VFD frequency — manual /api/vfd/set/{hz} commands
+    are left intact and the drive holds its last speed.
     """
     last_status_read = 0.0
     while True:
         try:
-            hz = crusher_logic.get_state().get("target_vfd_hz", 0)
-            await vfd_controller.set_frequency(hz)
+            cam_state = crusher_camera.get_state()
+            if cam_state.get("cam_status") == "live":
+                # Camera is live — let crusher logic drive the VFD
+                hz = crusher_logic.get_state().get("target_vfd_hz", 0)
+                await vfd_controller.set_frequency(hz)
+            # else: camera off/connecting/error — hold last speed, manual commands take effect
 
             now = _time.time()
             if now - last_status_read >= 5:
