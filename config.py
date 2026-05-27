@@ -75,10 +75,13 @@ STATIC_DIR     = os.environ.get("STATIC_DIR", str(_BASE / "static"))
 DB_PATH        = os.environ.get("DB_PATH", str(_BASE / "crusher_data.db"))
 
 # ── Crusher VFD Target Speeds (Hz) ─────────────────────────────────────
+# Speeds tuned to confirmed working range on installed ABB ACS580:
+#   min = 30 Hz (drive hardware limit), max = 43 Hz (drive hardware limit)
+#   To restore full range (20/37/50): set VFD params 30.13=0, 30.14=50, 46.02=50.00
 VFD_SPEEDS = {
-    "jaw filled"           : 20,
+    "jaw filled"           : 30,
     "jaw partially filled" : 37,
-    "jaw empty"            : 50,
+    "jaw empty"            : 43,
 }
 
 # ── Crusher Timer Thresholds (seconds) ─────────────────────────────────
@@ -153,7 +156,7 @@ VFD_FREQ_REGISTER = int(os.environ.get("VFD_FREQ_REGISTER", "0x0001"), 0)  # ABB
 # ABB ACS580 with par 46.02 = 50.00 Hz:  20000 (= 100 %) ↔ 50 Hz  →  scale = 400
 # Delta VFD (1 unit = 0.01 Hz):                                       scale = 100
 VFD_SCALE         = int(os.environ.get("VFD_SCALE", "400"))
-VFD_MAX_HZ        = int(os.environ.get("VFD_MAX_HZ", "50"))   # safety clamp
+VFD_MAX_HZ        = int(os.environ.get("VFD_MAX_HZ", "43"))   # safety clamp (hardware limit)
 
 # ── Command words ─────────────────────────────────────────────────────────
 # ABB Drives profile control word values:
