@@ -251,13 +251,13 @@ class VFDController:
                 VFD_CMD_REGISTER, VFD_CMD_PREPARE, slave=VFD_SLAVE_ID,
             )
             if rr.isError(): raise RuntimeError(f"PREPARE write error: {rr}")
-            time.sleep(0.05)
+            time.sleep(1.0)
 
             rr = self._client.write_register(
                 VFD_CMD_REGISTER, VFD_CMD_SWITCH_ON, slave=VFD_SLAVE_ID,
             )
             if rr.isError(): raise RuntimeError(f"SWITCH_ON write error: {rr}")
-            time.sleep(0.05)
+            time.sleep(1.0)
 
             self._initialized = True
             log.info(
