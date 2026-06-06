@@ -125,7 +125,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable crusher.service
+# Service installed but NOT enabled for auto-start.
+# Start manually with: sudo systemctl start crusher
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
