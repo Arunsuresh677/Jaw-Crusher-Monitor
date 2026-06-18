@@ -128,7 +128,7 @@ async def close_db():
 # ── Write helpers ─────────────────────────────────────────────────────────
 
 async def save_jaw_state(jaw_label: str, confidence: float,
-                         machine_status: str, target_vfd_hz: int,
+                         machine_status: str, target_vfd_rpm: int,
                          partial_secs: int = 0, empty_secs: int = 0):
     """Save jaw state every second; prunes rows older than 7 days every 1 000 inserts."""
     global _jaw_state_insert_count
@@ -142,7 +142,7 @@ async def save_jaw_state(jaw_label: str, confidence: float,
             """, (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 jaw_label, round(confidence, 3), machine_status,
-                target_vfd_hz, partial_secs, empty_secs,
+                target_vfd_rpm, partial_secs, empty_secs,
             ))
             _jaw_state_insert_count += 1
             if _jaw_state_insert_count % 1000 == 0:
@@ -193,7 +193,7 @@ async def resolve_alert(alert_id: str):
         log.error("resolve_alert error: %s", e)
 
 
-async def save_vfd_log(vfd_hz: int, jaw_label: str, machine_status: str):
+async def save_vfd_log(vfd_rpm: int, jaw_label: str, machine_status: str):
     """Save VFD reading every 5 seconds."""
     try:
         async with _write_lock:
@@ -202,7 +202,7 @@ async def save_vfd_log(vfd_hz: int, jaw_label: str, machine_status: str):
                 VALUES (?, ?, ?, ?)
             """, (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                vfd_hz, jaw_label, machine_status,
+                vfd_rpm, jaw_label, machine_status,
             ))
             await _db.commit()
     except Exception as e:

@@ -62,7 +62,7 @@ async def _db_background_task():
                 jaw_label      = state.get("jaw_label", "unknown"),
                 confidence     = state.get("jaw_conf", 0.0),
                 machine_status = state.get("machine_status", "STOPPED"),
-                target_vfd_hz  = state.get("target_vfd_hz", 0),
+                target_vfd_rpm = state.get("target_vfd_rpm", 0),
                 partial_secs   = state.get("partial_secs", 0),
                 empty_secs     = state.get("empty_secs", 0),
             )
@@ -70,7 +70,7 @@ async def _db_background_task():
             # ── Save VFD log every 5 seconds ────────────────
             if now - _last_vfd_save >= 5:
                 await save_vfd_log(
-                    vfd_hz         = state.get("target_vfd_hz", 0),
+                    vfd_rpm        = state.get("target_vfd_rpm", 0),
                     jaw_label      = state.get("jaw_label", "unknown"),
                     machine_status = state.get("machine_status", "STOPPED"),
                 )
@@ -107,7 +107,7 @@ async def _db_background_task():
 
 async def _vfd_background_task():
     """
-    Every 1 s: send target_vfd_hz to the VFD (only on change).
+    Every 1 s: send target_vfd_rpm to the VFD (only on change).
     Every 5 s: read Status Word + actual Hz from the drive for diagnostics.
 
     Auto-control only runs when the camera is actively classifying frames.
@@ -121,8 +121,8 @@ async def _vfd_background_task():
             cam_state = crusher_camera.get_state()
             if cam_state.get("cam_status") == "live":
                 # Camera is live — let crusher logic drive the VFD
-                hz = crusher_logic.get_state().get("target_vfd_hz", 0)
-                await vfd_controller.set_frequency(hz)
+                rpm = crusher_logic.get_state().get("target_vfd_rpm", 0)
+                await vfd_controller.set_speed(rpm)
             # else: camera off/connecting/error — hold last speed, manual commands take effect
 
             now = _time.time()
@@ -260,7 +260,7 @@ async def get_public_config():
     (RTSP host without credentials, VFD profile, etc.).
     """
     import re
-    from config import RTSP_URL, MODEL_PATH, VFD_PROFILE, VFD_MODE, VFD_PORT, VFD_ENABLED, VFD_MAX_HZ
+    from config import RTSP_URL, MODEL_PATH, VFD_PROFILE, VFD_MODE, VFD_PORT, VFD_ENABLED, VFD_MAX_RPM
     # Strip user:pass@ from RTSP URL before exposing
     rtsp_safe = re.sub(r"://[^@/]+@", "://", RTSP_URL or "")
     return JSONResponse({
@@ -270,7 +270,7 @@ async def get_public_config():
         "vfd_profile" : VFD_PROFILE,
         "vfd_mode"    : VFD_MODE,
         "vfd_port"    : VFD_PORT if VFD_ENABLED else None,
-        "vfd_max_hz"  : VFD_MAX_HZ,
+        "vfd_max_rpm" : VFD_MAX_RPM,
     })
 
 
@@ -282,7 +282,7 @@ async def get_status():
         "machine_status" : state.get("machine_status"),
         "jaw_label"      : state.get("jaw_label"),
         "jaw_conf"       : state.get("jaw_conf"),
-        "target_vfd_hz"  : state.get("target_vfd_hz"),
+        "target_vfd_rpm" : state.get("target_vfd_rpm"),
         "camera_fps"     : state.get("camera_fps"),
         "frame_count"    : state.get("frame_count"),
     })
@@ -374,7 +374,7 @@ async def flutter_machine_status():
         "machine_status"  : cs.get("machine_status"),
         "jaw_label"       : cs.get("jaw_label"),
         "jaw_conf"        : cs.get("jaw_conf"),
-        "target_vfd_hz"   : cs.get("target_vfd_hz"),
+        "target_vfd_rpm"  : cs.get("target_vfd_rpm"),
         "availability_pct": cs.get("availability_pct"),
         "active_alerts"   : cs.get("active_alerts"),
         "timer_run"       : cs.get("timer_run"),
@@ -430,17 +430,17 @@ async def vfd_status():
     return JSONResponse(vfd_controller.status)
 
 
-@app.post("/api/vfd/set/{hz}")
-async def vfd_set(hz: int):
+@app.post("/api/vfd/set/{rpm}")
+async def vfd_set(rpm: int):
     """
-    Manually override the VFD frequency (0–60 Hz).
+    Manually override the VFD speed (0–1000 RPM).
     0 sends the stop command.
     """
-    if hz < 0 or hz > 60:
-        return JSONResponse({"ok": False, "error": "hz must be 0–60"}, status_code=400)
-    vfd_controller._last_hz = -1          # force write even if value unchanged
-    await vfd_controller.set_frequency(hz)
-    return JSONResponse({"ok": True, "hz": hz})
+    if rpm < 0 or rpm > 1000:
+        return JSONResponse({"ok": False, "error": "rpm must be 0–1000"}, status_code=400)
+    vfd_controller._last_rpm = -1         # force write even if value unchanged
+    await vfd_controller.set_speed(rpm)
+    return JSONResponse({"ok": True, "rpm": rpm})
 
 
 @app.post("/api/vfd/stop")

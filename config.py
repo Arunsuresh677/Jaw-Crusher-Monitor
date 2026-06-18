@@ -15,7 +15,7 @@
 #   VFD_SLAVE_ID=1
 #   VFD_FREQ_REGISTER=0x2001       # holding register for frequency command
 #   VFD_CMD_REGISTER=0x2000        # holding register for run/stop command
-#   VFD_SCALE=100                  # register value = Hz × scale (most VFDs: 100)
+#   VFD_SCALE=20                   # register value = rpm × scale (ABB RPM mode: 20000=1000rpm)
 #   VFD_CMD_RUN=0x0002             # value to write to CMD register to run
 #   VFD_CMD_STOP=0x0001            # value to write to CMD register to stop
 # .env is listed in .gitignore and must never be committed.
@@ -74,14 +74,13 @@ STATIC_DIR     = os.environ.get("STATIC_DIR", str(_BASE / "static"))
 # ── Database ────────────────────────────────────────────────────────────
 DB_PATH        = os.environ.get("DB_PATH", str(_BASE / "crusher_data.db"))
 
-# ── Crusher VFD Target Speeds (Hz) ─────────────────────────────────────
-# Speeds tuned to confirmed working range on installed ABB ACS580:
-#   min = 30 Hz (drive hardware limit), max = 43 Hz (drive hardware limit)
-#   To restore full range (20/37/50): set VFD params 30.13=0, 30.14=50, 46.02=50.00
+# ── Crusher VFD Target Speeds (RPM) ─────────────────────────────────────
+# Equivalent to the previous Hz setpoints with motor rated at 1000 RPM @ 50 Hz:
+#   30 Hz → 600 RPM,  37 Hz → 740 RPM,  43 Hz → 860 RPM
 VFD_SPEEDS = {
-    "jaw filled"           : 30,
-    "jaw partially filled" : 37,
-    "jaw empty"            : 43,
+    "jaw filled"           : 600,
+    "jaw partially filled" : 740,
+    "jaw empty"            : 860,
 }
 
 # ── Crusher Timer Thresholds (seconds) ─────────────────────────────────
@@ -97,19 +96,20 @@ NIGHT_SHIFT_START   = 18
 # ═════════════════════════════════════════════════════════════════════════
 # Defaults below are configured for the installed drive at Kannan Blue Metals:
 #   ABB ACS580, Frame R4, with Embedded Fieldbus (EFB) — Modbus RTU
-#   ABB Drives communication profile, REF1 in Hz, motor nominal 50 Hz
+#   ABB Drives communication profile, REF1 in RPM, motor nominal 1000 RPM @ 50 Hz
 #
 # ABB drive must be configured on the keypad before Modbus control works:
 #   Par 58.01  Protocol enable            = Modbus RTU
 #   Par 58.03  Node address               = 1
 #   Par 58.04  Baud rate                  = 9600
 #   Par 58.05  Parity                     = 8 NONE 1
-#   Par 58.06  Communication profile      = ABB Drives Classic
+#   Par 58.06  Communication profile      = ABB Drives Classic  ← also "Refresh settings" here
+#   Par 58.26  EFB ref1 type              = Speed               ← NEW: RPM mode
 #   Par 19.11  Ext1 control loc / source  = EFB (Embedded Fieldbus)
-#   Par 28.11  Frequency ref1 source      = EFB ref1
-#   Par 46.02  Frequency scaling          = 50.00 Hz       (← critical for VFD_SCALE)
+#   Par 28.11  Speed ref1 source          = EFB ref1
+#   Par 46.01  Speed scaling              = 1000.00 RPM         (← 20000 = 1000 RPM)
 #   Par 58.14  Communication loss action  = Fault / Warning
-#   Par 96.07  Parameter save             = Save           (persist all of the above)
+#   Par 96.07  Parameter save             = Save                (persist all of the above)
 #   Then press LOC/REM on the keypad once → switch to REM mode.
 #
 # Hardware: connect Pi to drive terminal X5
@@ -152,11 +152,11 @@ VFD_CMD_REGISTER  = int(os.environ.get("VFD_CMD_REGISTER",  "0x0000"), 0)  # ABB
 VFD_FREQ_REGISTER = int(os.environ.get("VFD_FREQ_REGISTER", "0x0001"), 0)  # ABB REF1
 
 # ── Scaling ───────────────────────────────────────────────────────────────
-# Register value = hz × VFD_SCALE
-# ABB ACS580 with par 46.02 = 50.00 Hz:  20000 (= 100 %) ↔ 50 Hz  →  scale = 400
-# Delta VFD (1 unit = 0.01 Hz):                                       scale = 100
-VFD_SCALE         = int(os.environ.get("VFD_SCALE", "400"))
-VFD_MAX_HZ        = int(os.environ.get("VFD_MAX_HZ", "43"))   # safety clamp (hardware limit)
+# Register value = rpm × VFD_SCALE
+# ABB ACS580 with par 46.01 = 1000 RPM:  20000 (= 100%) ↔ 1000 RPM  →  scale = 20
+# Delta VFD (1 unit = 0.01 Hz, Hz mode):                               scale = 100
+VFD_SCALE         = int(os.environ.get("VFD_SCALE", "20"))
+VFD_MAX_RPM       = int(os.environ.get("VFD_MAX_RPM", "860"))  # safety clamp (= 43 Hz equivalent)
 
 # ── Command words ─────────────────────────────────────────────────────────
 # ABB Drives profile control word values:

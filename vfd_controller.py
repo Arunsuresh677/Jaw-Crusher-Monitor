@@ -8,7 +8,7 @@ communication profile. Also supports Delta VFD and other Modbus drives via
 
 ABB ACS580 register map (raw Modbus addresses, holding registers):
     0x0000  Control Word  (CW)     ← we write
-    0x0001  Reference 1   (REF1)   ← we write (Hz × VFD_SCALE)
+    0x0001  Reference 1   (REF1)   ← we write (rpm × VFD_SCALE)
     0x0003  Status Word   (SW)     ← we read for diagnostics
     0x0004  Actual ref 1  (ACT1)   ← actual running frequency
 
@@ -70,7 +70,7 @@ class VFDController:
     """
     Persistent Modbus connection to the VFD with:
       - connect() / disconnect()
-      - set_frequency(hz)  — writes REF1 + CW (only on change)
+      - set_speed(rpm)  — writes REF1 + CW (only on change)
       - stop_drive()       — writes stop command
       - reset_fault()      — writes 0x04FF to acknowledge a tripped state
       - status property    — for /api/vfd/status
@@ -82,7 +82,7 @@ class VFDController:
         self._client          = None
         self._connected       = False
         self._initialized     = False     # ABB state-machine init done?
-        self._last_hz         = -1        # sentinel — forces write on first call
+        self._last_rpm        = -1        # sentinel — forces write on first call
         self._last_write_ts   = 0.0
         self._last_error      = ""
         self._total_writes    = 0
@@ -91,7 +91,7 @@ class VFDController:
         self._mode            = "rtu"
         self._profile         = "abb"
         self._last_status_raw : Optional[int] = None
-        self._last_actual_hz  : Optional[float] = None
+        self._last_actual_rpm : Optional[float] = None
 
     # ─────────────────────────────────────────────────────────────────────
     # Public API
@@ -122,23 +122,23 @@ class VFDController:
         if self._client:
             await asyncio.to_thread(self._sync_disconnect)
 
-    async def set_frequency(self, hz: int):
+    async def set_speed(self, rpm: int):
         """
-        Send frequency setpoint to the VFD.
+        Send speed setpoint to the VFD.
         Only writes when the value differs from the last successful write.
-        hz=0 issues the stop command.
+        rpm=0 issues the stop command.
         """
         if not self._enabled:
             return
-        if hz == self._last_hz:
+        if rpm == self._last_rpm:
             return
-        await asyncio.to_thread(self._sync_write_frequency, hz)
+        await asyncio.to_thread(self._sync_write_speed, rpm)
 
     async def stop_drive(self):
         """Force-stop the VFD (ramp to zero)."""
         if not self._enabled:
             return
-        await asyncio.to_thread(self._sync_write_frequency, 0)
+        await asyncio.to_thread(self._sync_write_speed, 0)
 
     async def reset_fault(self):
         """Send fault-reset command (ABB CW = 0x04FF)."""
@@ -169,8 +169,8 @@ class VFDController:
             "profile"        : self._profile,
             "connected"      : self._connected,
             "initialized"    : self._initialized,
-            "target_hz"      : self._last_hz if self._last_hz >= 0 else 0,
-            "actual_hz"      : self._last_actual_hz,
+            "target_rpm"     : self._last_rpm if self._last_rpm >= 0 else 0,
+            "actual_rpm"     : self._last_actual_rpm,
             "status_word"    : _decode_abb_status_word(self._last_status_raw),
             "last_write_ts"  : self._last_write_ts,
             "last_error"     : self._last_error,
@@ -268,15 +268,15 @@ class VFDController:
             self._last_error = f"init sequence: {e}"
             log.error("❌ VFD init sequence failed: %s", e)
 
-    def _sync_write_frequency(self, hz: int):
+    def _sync_write_speed(self, rpm: int):
         """
-        Write REF1 (frequency) and CW (run/stop) to the VFD.
-        Auto-clamps to [0, VFD_MAX_HZ] for safety.
+        Write REF1 (speed in RPM) and CW (run/stop) to the VFD.
+        Auto-clamps to [0, VFD_MAX_RPM] for safety.
         Auto-reconnects + re-inits if the connection is stale.
         """
         from config import (
             VFD_SLAVE_ID, VFD_FREQ_REGISTER, VFD_CMD_REGISTER,
-            VFD_SCALE, VFD_MAX_HZ, VFD_CMD_RUN, VFD_CMD_STOP,
+            VFD_SCALE, VFD_MAX_RPM, VFD_CMD_RUN, VFD_CMD_STOP,
             VFD_MODE, VFD_PORT, VFD_BAUDRATE, VFD_PARITY,
             VFD_STOPBITS, VFD_BYTESIZE, VFD_TCP_HOST, VFD_TCP_PORT, VFD_TIMEOUT,
         )
@@ -299,19 +299,19 @@ class VFDController:
                 return
 
         # Safety clamp
-        original_hz = hz
-        hz = max(0, min(hz, VFD_MAX_HZ))
-        if hz != original_hz:
-            log.warning("VFD frequency clamped: %d → %d Hz (VFD_MAX_HZ=%d)",
-                        original_hz, hz, VFD_MAX_HZ)
+        original_rpm = rpm
+        rpm = max(0, min(rpm, VFD_MAX_RPM))
+        if rpm != original_rpm:
+            log.warning("VFD speed clamped: %d → %d RPM (VFD_MAX_RPM=%d)",
+                        original_rpm, rpm, VFD_MAX_RPM)
 
-        freq_value = hz * VFD_SCALE
-        cmd_value  = VFD_CMD_STOP if hz == 0 else VFD_CMD_RUN
+        ref_value = rpm * VFD_SCALE
+        cmd_value = VFD_CMD_STOP if rpm == 0 else VFD_CMD_RUN
 
         try:
-            # 1. Write REF1 (frequency setpoint)
+            # 1. Write REF1 (speed setpoint)
             rr = self._client.write_register(
-                address=VFD_FREQ_REGISTER, value=freq_value, slave=VFD_SLAVE_ID,
+                address=VFD_FREQ_REGISTER, value=ref_value, slave=VFD_SLAVE_ID,
             )
             if rr.isError():
                 raise RuntimeError(f"REF1 write error: {rr}")
@@ -324,15 +324,15 @@ class VFDController:
                 raise RuntimeError(f"CW write error: {rc}")
 
             # Success
-            self._last_hz       = hz
+            self._last_rpm      = rpm
             self._last_write_ts = time.time()
             self._total_writes += 1
             self._last_error    = ""
             log.info(
-                "VFD ✅  REF1[0x%04X]=%d (%d Hz)  CW[0x%04X]=0x%04X  %s",
-                VFD_FREQ_REGISTER, freq_value, hz,
+                "VFD ✅  REF1[0x%04X]=%d (%d RPM)  CW[0x%04X]=0x%04X  %s",
+                VFD_FREQ_REGISTER, ref_value, rpm,
                 VFD_CMD_REGISTER,  cmd_value,
-                "RUN" if hz > 0 else "STOP",
+                "RUN" if rpm > 0 else "STOP",
             )
         except Exception as e:
             self._total_errors += 1
@@ -355,7 +355,7 @@ class VFDController:
             if act1 > 32767:
                 act1 -= 65536
             self._last_status_raw = sw
-            self._last_actual_hz  = round(act1 / VFD_SCALE, 2)
+            self._last_actual_rpm = round(act1 / VFD_SCALE, 2)
         except Exception as e:
             self._last_error = f"read_status: {e}"
             log.debug("VFD read_status failed: %s", e)

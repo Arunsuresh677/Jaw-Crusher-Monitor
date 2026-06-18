@@ -188,22 +188,22 @@ class TestVFDSpeed:
     def test_filled_gives_low_speed(self):
         logic = CrusherLogic()
         logic.update("jaw filled", 0.95)
-        assert logic.target_vfd_hz == 20
+        assert logic.target_vfd_rpm == 600
 
     def test_partially_filled_gives_mid_speed(self):
         logic = CrusherLogic()
         logic.update("jaw partially filled", 0.88)
-        assert logic.target_vfd_hz == 37
+        assert logic.target_vfd_rpm == 740
 
     def test_empty_gives_high_speed(self):
         logic = CrusherLogic()
         logic.update("jaw empty", 0.90)
-        assert logic.target_vfd_hz == 50
+        assert logic.target_vfd_rpm == 860
 
     def test_unknown_label_gives_zero_speed(self):
         logic = CrusherLogic()
         logic.update("bad_label", 0.50)
-        assert logic.target_vfd_hz == 0
+        assert logic.target_vfd_rpm == 0
 
 
 # ─────────────────────────────────────────────
@@ -356,7 +356,7 @@ class TestGetState:
         state = logic.get_state()
         required_keys = [
             "jaw_label", "jaw_conf", "machine_status", "status_since",
-            "target_vfd_hz", "timer_run", "timer_stuck", "timer_no_feed",
+            "target_vfd_rpm", "timer_run", "timer_stuck", "timer_no_feed",
             "timer_idle", "timer_shift", "availability_pct",
             "frames_running", "frames_stuck", "frames_no_feed",
             "frame_count", "tonnage_actual", "active_alerts", "alert_count",

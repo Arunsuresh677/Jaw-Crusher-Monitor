@@ -212,13 +212,13 @@ class CrusherCamera:
 
                 # ── On-frame overlay ──────────────────────────────────
                 if not HEADLESS:
-                    target_hz    = VFD_SPEEDS.get(label, 0)
+                    target_rpm   = VFD_SPEEDS.get(label, 0)
                     status       = crusher_state["machine_status"]
                     status_color = (0, 255, 0) if status == "NORMAL" else (0, 80, 255)
                     cv2.rectangle(annotated, (20, 20), (620, 200), (30, 30, 30), -1)
                     cv2.putText(annotated, f"AI State : {label}",
                                 (40, 60),  cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                    cv2.putText(annotated, f"VFD      : {target_hz} Hz",
+                    cv2.putText(annotated, f"VFD      : {target_rpm} RPM",
                                 (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                     cv2.putText(annotated, f"Status   : {status}",
                                 (40, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)

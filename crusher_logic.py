@@ -160,7 +160,7 @@ class CrusherLogic:
         self.first_run_at   : Optional[datetime] = None  # first NORMAL status today
 
         # ── VFD ────────────────────────────────────────────────
-        self.target_vfd_hz  : int   = 0      # Hz to send to VFD controller
+        self.target_vfd_rpm  : int   = 0      # RPM to send to VFD controller
 
         # ── Partial / Empty timers ─────────────────────────────
         self._partial_start : Optional[float] = None
@@ -216,7 +216,7 @@ class CrusherLogic:
             now = time.time()
 
             # ── VFD target speed ──────────────────────────────
-            self.target_vfd_hz = VFD_SPEEDS.get(label, 0)
+            self.target_vfd_rpm = VFD_SPEEDS.get(label, 0)
 
             # ── Timer logic (your original logic, production-safe) ──
             if label == "jaw partially filled":
@@ -321,7 +321,7 @@ class CrusherLogic:
             # ── Per-frame debug log (use DEBUG level to avoid log bloat) ─
             log.debug(
                 f"Label: {label} | Conf: {conf:.2f} | "
-                f"VFD: {self.target_vfd_hz} Hz | "
+                f"VFD: {self.target_vfd_rpm} RPM | "
                 f"Status: {self.machine_status.value} | "
                 f"partial_secs: {partial_secs} | empty_secs: {empty_secs}"
             )
@@ -352,7 +352,7 @@ class CrusherLogic:
                 "status_since"    : self.status_since.strftime("%H:%M:%S"),
 
                 # VFD
-                "target_vfd_hz"   : self.target_vfd_hz,
+                "target_vfd_rpm"   : self.target_vfd_rpm,
 
                 # Timers
                 "timer_run"       : self.timer_run.hms,
@@ -454,7 +454,7 @@ class CrusherLogic:
             "to"       : to_status,
             "at"       : datetime.now().strftime("%H:%M:%S"),
             "jaw"      : self.jaw_label,
-            "vfd_hz"   : self.target_vfd_hz,
+            "vfd_hz"   : self.target_vfd_rpm,
         }
         self.history.append(entry)
         if len(self.history) > 100:
