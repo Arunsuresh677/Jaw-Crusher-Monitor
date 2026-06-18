@@ -75,12 +75,12 @@ STATIC_DIR     = os.environ.get("STATIC_DIR", str(_BASE / "static"))
 DB_PATH        = os.environ.get("DB_PATH", str(_BASE / "crusher_data.db"))
 
 # ── Crusher VFD Target Speeds (RPM) ─────────────────────────────────────
-# Equivalent to the previous Hz setpoints with motor rated at 1000 RPM @ 50 Hz:
-#   30 Hz → 600 RPM,  37 Hz → 740 RPM,  43 Hz → 860 RPM
+# Motor rated 1500 RPM @ 50 Hz (4-pole). Equivalent Hz setpoints:
+#   30 Hz → 900 RPM,  37 Hz → 1110 RPM,  43 Hz → 1290 RPM
 VFD_SPEEDS = {
-    "jaw filled"           : 600,
-    "jaw partially filled" : 740,
-    "jaw empty"            : 860,
+    "jaw filled"           : 900,
+    "jaw partially filled" : 1110,
+    "jaw empty"            : 1290,
 }
 
 # ── Crusher Timer Thresholds (seconds) ─────────────────────────────────
@@ -107,7 +107,7 @@ NIGHT_SHIFT_START   = 18
 #   Par 58.26  EFB ref1 type              = Speed               ← NEW: RPM mode
 #   Par 19.11  Ext1 control loc / source  = EFB (Embedded Fieldbus)
 #   Par 28.11  Speed ref1 source          = EFB ref1
-#   Par 46.01  Speed scaling              = 1000.00 RPM         (← 20000 = 1000 RPM)
+#   Par 46.01  Speed scaling              = 1500.00 RPM         (← 20000 = 1500 RPM)
 #   Par 58.14  Communication loss action  = Fault / Warning
 #   Par 96.07  Parameter save             = Save                (persist all of the above)
 #   Then press LOC/REM on the keypad once → switch to REM mode.
@@ -153,10 +153,10 @@ VFD_FREQ_REGISTER = int(os.environ.get("VFD_FREQ_REGISTER", "0x0001"), 0)  # ABB
 
 # ── Scaling ───────────────────────────────────────────────────────────────
 # Register value = rpm × VFD_SCALE
-# ABB ACS580 with par 46.01 = 1000 RPM:  20000 (= 100%) ↔ 1000 RPM  →  scale = 20
+# ABB ACS580 with par 46.01 = 1500 RPM:  20000 (= 100%) ↔ 1500 RPM  →  scale = 13.33
 # Delta VFD (1 unit = 0.01 Hz, Hz mode):                               scale = 100
-VFD_SCALE         = int(os.environ.get("VFD_SCALE", "20"))
-VFD_MAX_RPM       = int(os.environ.get("VFD_MAX_RPM", "860"))  # safety clamp (= 43 Hz equivalent)
+VFD_SCALE         = float(os.environ.get("VFD_SCALE", str(round(20000/1500, 6))))
+VFD_MAX_RPM       = int(os.environ.get("VFD_MAX_RPM", "1290"))  # safety clamp (= 43 Hz equivalent)
 
 # ── Command words ─────────────────────────────────────────────────────────
 # ABB Drives profile control word values:

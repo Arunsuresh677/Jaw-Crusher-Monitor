@@ -305,7 +305,7 @@ class VFDController:
             log.warning("VFD speed clamped: %d → %d RPM (VFD_MAX_RPM=%d)",
                         original_rpm, rpm, VFD_MAX_RPM)
 
-        ref_value = rpm * VFD_SCALE
+        ref_value = int(round(rpm * VFD_SCALE))
         cmd_value = VFD_CMD_STOP if rpm == 0 else VFD_CMD_RUN
 
         try:
@@ -355,7 +355,7 @@ class VFDController:
             if act1 > 32767:
                 act1 -= 65536
             self._last_status_raw = sw
-            self._last_actual_rpm = round(act1 / VFD_SCALE, 2)
+            self._last_actual_rpm = round(act1 / VFD_SCALE, 1)
         except Exception as e:
             self._last_error = f"read_status: {e}"
             log.debug("VFD read_status failed: %s", e)

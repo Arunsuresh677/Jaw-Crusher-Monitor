@@ -188,17 +188,17 @@ class TestVFDSpeed:
     def test_filled_gives_low_speed(self):
         logic = CrusherLogic()
         logic.update("jaw filled", 0.95)
-        assert logic.target_vfd_rpm == 600
+        assert logic.target_vfd_rpm == 900
 
     def test_partially_filled_gives_mid_speed(self):
         logic = CrusherLogic()
         logic.update("jaw partially filled", 0.88)
-        assert logic.target_vfd_rpm == 740
+        assert logic.target_vfd_rpm == 1110
 
     def test_empty_gives_high_speed(self):
         logic = CrusherLogic()
         logic.update("jaw empty", 0.90)
-        assert logic.target_vfd_rpm == 860
+        assert logic.target_vfd_rpm == 1290
 
     def test_unknown_label_gives_zero_speed(self):
         logic = CrusherLogic()
