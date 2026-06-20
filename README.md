@@ -5,7 +5,7 @@
 # Jaw Crusher Monitor
 ### Production Edge AI System — Real-Time Crusher State Classification & Automated VFD Control
 
-*Deployed 24/7 at Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu, India*
+*Deployed in production at Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu, India*
 
 ---
 
