@@ -30,16 +30,17 @@ log = logging.getLogger(__name__)
 class CrusherCamera:
 
     def __init__(self):
-        self.model        = None
-        self.cap          = None
-        self.running      = False
-        self.thread       = None
-        self.latest_frame = None
-        self.latest_state = {}
-        self.status       = "stopped"
-        self.fps_actual   = 0.0
-        self.frame_count  = 0
-        self._lock        = threading.Lock()
+        self.model             = None
+        self.cap               = None
+        self.running           = False
+        self.thread            = None
+        self.latest_frame      = None
+        self.latest_state      = {}
+        self.status            = "stopped"
+        self.fps_actual        = 0.0
+        self.frame_count       = 0
+        self._last_frame_time  = 0.0   # epoch seconds of last successful inference
+        self._lock             = threading.Lock()
 
     # ------------------------------------------------------------------
     # Model loading
@@ -115,18 +116,21 @@ class CrusherCamera:
 
     def _update(self, frame_b64: str, state: dict, fps: float):
         with self._lock:
-            self.latest_frame = frame_b64
-            self.latest_state = state
-            self.fps_actual   = fps
-            self.frame_count += 1
+            self.latest_frame     = frame_b64
+            self.latest_state     = state
+            self.fps_actual       = fps
+            self.frame_count     += 1
+            self._last_frame_time = time.time()
 
     def get_state(self) -> dict:
         with self._lock:
+            frame_age = (time.time() - self._last_frame_time) if self._last_frame_time else None
             return {
-                "frame"       : self.latest_frame,
-                "camera_fps"  : round(self.fps_actual, 1),
-                "frame_count" : self.frame_count,
-                "cam_status"  : self.status,
+                "frame"        : self.latest_frame,
+                "camera_fps"   : round(self.fps_actual, 1),
+                "frame_count"  : self.frame_count,
+                "cam_status"   : self.status,
+                "frame_age_s"  : round(frame_age, 1) if frame_age is not None else None,
                 **self.latest_state,
             }
 

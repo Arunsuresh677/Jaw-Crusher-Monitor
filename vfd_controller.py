@@ -79,17 +79,18 @@ class VFDController:
     """
 
     def __init__(self):
-        self._client          = None
-        self._connected       = False
-        self._initialized     = False     # ABB state-machine init done?
-        self._last_rpm        = -1        # sentinel — forces write on first call
-        self._last_write_ts   = 0.0
-        self._last_error      = ""
-        self._total_writes    = 0
-        self._total_errors    = 0
-        self._enabled         = False
-        self._mode            = "rtu"
-        self._profile         = "abb"
+        self._client              = None
+        self._connected           = False
+        self._initialized         = False     # ABB state-machine init done?
+        self._last_rpm            = -1        # sentinel — forces write on first call
+        self._last_write_ts       = 0.0
+        self._last_error          = ""
+        self._total_writes        = 0
+        self._total_errors        = 0
+        self._consecutive_errors  = 0         # consecutive failures — alerts operator at threshold
+        self._enabled             = False
+        self._mode                = "rtu"
+        self._profile             = "abb"
         self._last_status_raw : Optional[int] = None
         self._last_actual_rpm : Optional[float] = None
 
@@ -164,18 +165,19 @@ class VFDController:
     def status(self) -> dict:
         """Snapshot for /api/vfd/status."""
         return {
-            "enabled"        : self._enabled,
-            "mode"           : self._mode,
-            "profile"        : self._profile,
-            "connected"      : self._connected,
-            "initialized"    : self._initialized,
-            "target_rpm"     : self._last_rpm if self._last_rpm >= 0 else 0,
-            "actual_rpm"     : self._last_actual_rpm,
-            "status_word"    : _decode_abb_status_word(self._last_status_raw),
-            "last_write_ts"  : self._last_write_ts,
-            "last_error"     : self._last_error,
-            "total_writes"   : self._total_writes,
-            "total_errors"   : self._total_errors,
+            "enabled"             : self._enabled,
+            "mode"                : self._mode,
+            "profile"             : self._profile,
+            "connected"           : self._connected,
+            "initialized"         : self._initialized,
+            "target_rpm"          : self._last_rpm if self._last_rpm >= 0 else 0,
+            "actual_rpm"          : self._last_actual_rpm,
+            "status_word"         : _decode_abb_status_word(self._last_status_raw),
+            "last_write_ts"       : self._last_write_ts,
+            "last_error"          : self._last_error,
+            "total_writes"        : self._total_writes,
+            "total_errors"        : self._total_errors,
+            "consecutive_errors"  : self._consecutive_errors,
         }
 
     # ─────────────────────────────────────────────────────────────────────
@@ -289,6 +291,13 @@ class VFDController:
                                VFD_TCP_HOST, VFD_TCP_PORT, VFD_TIMEOUT)
             if not self._connected:
                 self._total_errors += 1
+                self._consecutive_errors += 1
+                if self._consecutive_errors % 5 == 1:
+                    log.critical(
+                        "VFD UNREACHABLE — %d consecutive failures. "
+                        "Check RS-485 cable and drive power. Last error: %s",
+                        self._consecutive_errors, self._last_error,
+                    )
                 return
 
         # Run init sequence once after (re)connect (ABB only)
@@ -324,10 +333,11 @@ class VFDController:
                 raise RuntimeError(f"CW write error: {rc}")
 
             # Success
-            self._last_rpm      = rpm
-            self._last_write_ts = time.time()
-            self._total_writes += 1
-            self._last_error    = ""
+            self._last_rpm            = rpm
+            self._last_write_ts       = time.time()
+            self._total_writes       += 1
+            self._last_error          = ""
+            self._consecutive_errors  = 0
             log.info(
                 "VFD ✅  REF1[0x%04X]=%d (%d RPM)  CW[0x%04X]=0x%04X  %s",
                 VFD_FREQ_REGISTER, ref_value, rpm,

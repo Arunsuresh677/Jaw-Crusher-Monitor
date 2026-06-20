@@ -52,57 +52,61 @@ _last_alert_ids  = set()
 async def _db_background_task():
     """Runs every second — saves VFD every 5s, OEE every 60s"""
     global _last_vfd_save, _last_oee_save, _last_alert_ids
-    while True:
-        try:
-            now   = _time.time()
-            state = crusher_logic.get_state()
+    try:
+        while True:
+            try:
+                now   = _time.time()
+                state = crusher_logic.get_state()
 
-            # ── Save jaw state every frame ──────────────────
-            await save_jaw_state(
-                jaw_label      = state.get("jaw_label", "unknown"),
-                confidence     = state.get("jaw_conf", 0.0),
-                machine_status = state.get("machine_status", "STOPPED"),
-                target_vfd_rpm = state.get("target_vfd_rpm", 0),
-                partial_secs   = state.get("partial_secs", 0),
-                empty_secs     = state.get("empty_secs", 0),
-            )
-
-            # ── Save VFD log every 5 seconds ────────────────
-            if now - _last_vfd_save >= 5:
-                await save_vfd_log(
-                    vfd_rpm        = state.get("target_vfd_rpm", 0),
+                # ── Save jaw state every frame ──────────────────
+                await save_jaw_state(
                     jaw_label      = state.get("jaw_label", "unknown"),
+                    confidence     = state.get("jaw_conf", 0.0),
                     machine_status = state.get("machine_status", "STOPPED"),
+                    target_vfd_rpm = state.get("target_vfd_rpm", 0),
+                    partial_secs   = state.get("partial_secs", 0),
+                    empty_secs     = state.get("empty_secs", 0),
                 )
-                _last_vfd_save = now
 
-            # ── Save OEE snapshot every 60 seconds ──────────
-            if now - _last_oee_save >= 60:
-                await save_oee_snapshot(state)
-                _last_oee_save = now
-
-            # ── Save new alerts ─────────────────────────────
-            active = state.get("active_alerts", [])
-            current_ids = {a["id"] for a in active}
-
-            for alert in active:
-                if alert["id"] not in _last_alert_ids:
-                    await save_alert(
-                        alert_id = alert["id"],
-                        level    = alert["level"],
-                        message  = alert["message"],
+                # ── Save VFD log every 5 seconds ────────────────
+                if now - _last_vfd_save >= 5:
+                    await save_vfd_log(
+                        vfd_rpm        = state.get("target_vfd_rpm", 0),
+                        jaw_label      = state.get("jaw_label", "unknown"),
+                        machine_status = state.get("machine_status", "STOPPED"),
                     )
+                    _last_vfd_save = now
 
-            # Resolve alerts no longer active
-            for aid in _last_alert_ids - current_ids:
-                await resolve_alert(aid)
+                # ── Save OEE snapshot every 60 seconds ──────────
+                if now - _last_oee_save >= 60:
+                    await save_oee_snapshot(state)
+                    _last_oee_save = now
 
-            _last_alert_ids = current_ids
+                # ── Save new alerts ─────────────────────────────
+                active = state.get("active_alerts", [])
+                current_ids = {a["id"] for a in active}
 
-        except Exception as e:
-            log.error("DB background task error: %s", e)
+                for alert in active:
+                    if alert["id"] not in _last_alert_ids:
+                        await save_alert(
+                            alert_id = alert["id"],
+                            level    = alert["level"],
+                            message  = alert["message"],
+                        )
 
-        await asyncio.sleep(1)
+                # Resolve alerts no longer active
+                for aid in _last_alert_ids - current_ids:
+                    await resolve_alert(aid)
+
+                _last_alert_ids = current_ids
+
+            except Exception as e:
+                log.error("DB background task error: %s", e)
+
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        log.info("DB background task cancelled cleanly.")
+        raise
 
 
 async def _vfd_background_task():
@@ -116,22 +120,38 @@ async def _vfd_background_task():
     are left intact and the drive holds its last speed.
     """
     last_status_read = 0.0
-    while True:
-        try:
-            cam_state = crusher_camera.get_state()
-            if cam_state.get("cam_status") == "live":
-                # Camera is live — let crusher logic drive the VFD
-                rpm = crusher_logic.get_state().get("target_vfd_rpm", 0)
-                await vfd_controller.set_speed(rpm)
-            # else: camera off/connecting/error — hold last speed, manual commands take effect
+    _FRAME_STALE_SECS = 30   # warn if no new inference frame for this long
+    try:
+        while True:
+            try:
+                cam_state = crusher_camera.get_state()
 
-            now = _time.time()
-            if now - last_status_read >= 5:
-                await vfd_controller.read_status()
-                last_status_read = now
-        except Exception as e:
-            log.error("VFD background task error: %s", e)
-        await asyncio.sleep(1)
+                # Watchdog: warn if camera thread is live but frames have stopped
+                frame_age = cam_state.get("frame_age_s")
+                if cam_state.get("cam_status") == "live" and frame_age is not None:
+                    if frame_age > _FRAME_STALE_SECS:
+                        log.critical(
+                            "CAMERA WATCHDOG: last inference frame is %.0fs old — "
+                            "thread may be frozen. Restart camera via POST /api/camera/restart",
+                            frame_age,
+                        )
+
+                if cam_state.get("cam_status") == "live":
+                    # Camera is live — let crusher logic drive the VFD
+                    rpm = crusher_logic.get_state().get("target_vfd_rpm", 0)
+                    await vfd_controller.set_speed(rpm)
+                # else: camera off/connecting/error — hold last speed, manual commands take effect
+
+                now = _time.time()
+                if now - last_status_read >= 5:
+                    await vfd_controller.read_status()
+                    last_status_read = now
+            except Exception as e:
+                log.error("VFD background task error: %s", e)
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        log.info("VFD background task cancelled cleanly.")
+        raise
 
 
 # ── Lifespan ─────────────────────────────────────────────────
@@ -164,6 +184,8 @@ async def lifespan(app: FastAPI):
     log.info("Shutting down...")
     task_db.cancel()
     task_vfd.cancel()
+    # Wait for tasks to finish their current cycle before touching VFD/DB
+    await asyncio.gather(task_db, task_vfd, return_exceptions=True)
     await vfd_controller.stop_drive()   # safe-stop the VFD on server shutdown
     await vfd_controller.disconnect()
     crusher_camera.stop()

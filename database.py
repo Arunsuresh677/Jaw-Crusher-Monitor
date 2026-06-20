@@ -28,6 +28,7 @@ async def init_db():
     """Open the shared connection, enable WAL mode, create tables."""
     global _db
     _db = await aiosqlite.connect(DB_PATH)
+    _db.row_factory = aiosqlite.Row   # set once — avoids race condition in read functions
     # WAL mode: readers never block writers and vice-versa
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.execute("PRAGMA synchronous=NORMAL")
@@ -268,7 +269,6 @@ async def save_shift_report(state: dict):
 async def get_alerts_history(limit: int = 100):
     """Get last N alerts from DB."""
     try:
-        _db.row_factory = aiosqlite.Row
         cur = await _db.execute(
             "SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (limit,)
         )
@@ -282,7 +282,6 @@ async def get_alerts_history(limit: int = 100):
 async def get_oee_history(hours: int = 24):
     """Get OEE history for the last N hours."""
     try:
-        _db.row_factory = aiosqlite.Row
         cur = await _db.execute("""
             SELECT * FROM oee_history
             WHERE timestamp >= datetime('now', 'localtime', ?)
@@ -298,7 +297,6 @@ async def get_oee_history(hours: int = 24):
 async def get_vfd_history(minutes: int = 60):
     """Get VFD history for the last N minutes."""
     try:
-        _db.row_factory = aiosqlite.Row
         cur = await _db.execute("""
             SELECT * FROM vfd_logs
             WHERE timestamp >= datetime('now', 'localtime', ?)
@@ -314,7 +312,6 @@ async def get_vfd_history(minutes: int = 60):
 async def get_shift_reports(limit: int = 30):
     """Get last N shift reports."""
     try:
-        _db.row_factory = aiosqlite.Row
         cur = await _db.execute(
             "SELECT * FROM shift_reports ORDER BY id DESC LIMIT ?", (limit,)
         )
@@ -328,7 +325,6 @@ async def get_shift_reports(limit: int = 30):
 async def get_state_summary_today():
     """Summary of today's jaw states."""
     try:
-        _db.row_factory = aiosqlite.Row
         cur = await _db.execute("""
             SELECT machine_status, COUNT(*) as count
             FROM jaw_states
@@ -351,8 +347,6 @@ async def get_period_summary(from_date: str, to_date: str) -> dict:
     try:
         from_dt = f"{from_date} 00:00:00"
         to_dt   = f"{to_date} 23:59:59"
-
-        _db.row_factory = aiosqlite.Row
 
         # ── Jaw states: run / stuck / no-feed counts + first/last timestamps ──
         cur = await _db.execute("""

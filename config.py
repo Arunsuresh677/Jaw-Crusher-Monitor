@@ -32,16 +32,18 @@ _BASE = Path(os.environ.get("CRUSHER_BASE", Path(__file__).parent)).resolve()
 # ── Model & Stream ──────────────────────────────────────────────────────
 MODEL_PATH = os.environ.get("MODEL_PATH", str(_BASE / "weights" / "best.pt"))
 
-# SECURITY: never commit RTSP_URL — put it in .env
-RTSP_URL   = os.environ.get(
-    "RTSP_URL",
-    "rtsp://admin:Cctv2025@192.168.0.124:1060/Streaming/Channels/101"
-)
+# SECURITY: RTSP_URL must be set in .env — no default to prevent credential leakage
+RTSP_URL   = os.environ.get("RTSP_URL", "")
 
 # ── Auth (single-user, server-side) ────────────────────────────────────
 AUTH_USER = os.environ.get("AUTH_USER", "admin")
-AUTH_PASS = os.environ.get("AUTH_PASS", "admin123")
-# NOTE: set AUTH_PASS in .env for production — never leave the default.
+AUTH_PASS = os.environ.get("AUTH_PASS", "")
+
+# Refuse to start without a real password — default of admin123 removed intentionally
+if not AUTH_PASS:
+    raise RuntimeError(
+        "AUTH_PASS is not set. Add AUTH_PASS=<yourpassword> to .env and restart."
+    )
 
 # ── Inference ───────────────────────────────────────────────────────────
 CONF_THRESHOLD = 0.50
