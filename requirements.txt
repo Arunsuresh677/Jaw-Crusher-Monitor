@@ -1,7 +1,7 @@
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 python-multipart==0.0.9
-ultralytics>=8.3.0
+ultralytics==8.4.48
 opencv-python-headless>=4.10.0.84
 aiofiles==23.2.1
 aiosqlite==0.20.0

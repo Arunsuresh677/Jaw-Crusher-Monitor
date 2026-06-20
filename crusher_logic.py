@@ -446,7 +446,7 @@ class CrusherLogic:
             self._alert_ids.discard(alert_id)
             # Prune resolved alerts — keep list bounded to avoid memory leak
             if len(self.alerts) > 200:
-                self.alerts = [a for a in self.alerts if not a.resolved][-200:]
+                self.alerts = self.alerts[-200:]
 
     def _add_history(self, from_status: str, to_status: str):
         entry = {
@@ -458,7 +458,7 @@ class CrusherLogic:
         }
         self.history.append(entry)
         if len(self.history) > 100:
-            self.history.pop(0)
+            self.history = self.history[-100:]
 
 
 # Global singleton

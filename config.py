@@ -65,6 +65,7 @@ HEADLESS       = True
 
 # ── Logging ─────────────────────────────────────────────────────────────
 LOG_DIR        = os.environ.get("LOG_DIR", str(_BASE / "logs"))
+LOG_LEVEL      = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 # ── Server ──────────────────────────────────────────────────────────────
 HOST           = "0.0.0.0"

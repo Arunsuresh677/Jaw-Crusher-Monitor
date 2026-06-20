@@ -12,12 +12,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from camera import crusher_camera
 from crusher_logic import crusher_logic
-from config import HOST, PORT, LOG_DIR, STATIC_DIR, AUTH_USER, AUTH_PASS
+from config import HOST, PORT, LOG_DIR, STATIC_DIR, AUTH_USER, AUTH_PASS, LOG_LEVEL
 from database import (
     init_db, close_db, save_jaw_state, save_alert, resolve_alert,
     save_vfd_log, save_oee_snapshot, save_shift_report,
@@ -33,7 +34,7 @@ from vfd_controller import vfd_controller
 # ── Logging ──────────────────────────────────────────────────
 os.makedirs(LOG_DIR, exist_ok=True)
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.FileHandler(f"{LOG_DIR}/crusher_yolo.log"),
@@ -199,8 +200,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/health")
+async def health():
+    return JSONResponse({
+        "status"    : "ok",
+        "timestamp" : datetime.now().isoformat(),
+        "vfd"       : vfd_controller.status.get("connected"),
+        "camera"    : crusher_camera.get_state().get("cam_status"),
+    })
 
 
 # ── WebSocket Manager ─────────────────────────────────────────
@@ -298,15 +316,19 @@ async def get_public_config():
 
 @app.get("/api/status")
 async def get_status():
-    state = crusher_camera.get_state()
+    state    = crusher_camera.get_state()
+    vfd_stat = vfd_controller.status
     return JSONResponse({
-        "cam_status"     : state.get("cam_status"),
-        "machine_status" : state.get("machine_status"),
-        "jaw_label"      : state.get("jaw_label"),
-        "jaw_conf"       : state.get("jaw_conf"),
-        "target_vfd_rpm" : state.get("target_vfd_rpm"),
-        "camera_fps"     : state.get("camera_fps"),
-        "frame_count"    : state.get("frame_count"),
+        "cam_status"          : state.get("cam_status"),
+        "machine_status"      : state.get("machine_status"),
+        "jaw_label"           : state.get("jaw_label"),
+        "jaw_conf"            : state.get("jaw_conf"),
+        "target_vfd_rpm"      : state.get("target_vfd_rpm"),
+        "camera_fps"          : state.get("camera_fps"),
+        "frame_count"         : state.get("frame_count"),
+        "frame_age_s"         : state.get("frame_age_s"),
+        "vfd_connected"       : vfd_stat.get("connected"),
+        "vfd_consecutive_errors" : vfd_stat.get("consecutive_errors"),
     })
 
 
@@ -356,6 +378,8 @@ async def get_snapshot():
 
 @app.post("/api/tonnage/{tonnes}")
 async def add_tonnage(tonnes: float):
+    if tonnes < 0 or tonnes > 1000:
+        return JSONResponse({"ok": False, "error": "tonnes must be 0–1000"}, status_code=400)
     crusher_logic.update_tonnage(tonnes)
     return JSONResponse({"ok": True, "added": tonnes})
 
@@ -618,13 +642,22 @@ async def report_excel(
 async def mjpeg_stream():
     import base64
     async def generate():
+        last_frame_count = -1
         while True:
-            state = crusher_camera.get_state()
-            frame_b64 = state.get("frame")
-            if frame_b64:
-                frame_bytes = base64.b64decode(frame_b64)
-                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
-            await asyncio.sleep(0.1)
+            try:
+                state      = crusher_camera.get_state()
+                frame_age  = state.get("frame_age_s")
+                # Stop streaming if no fresh frame for 30 seconds — client will reconnect
+                if frame_age is not None and frame_age > 30:
+                    break
+                frame_b64 = state.get("frame")
+                if frame_b64 and state.get("frame_count") != last_frame_count:
+                    last_frame_count = state["frame_count"]
+                    frame_bytes = base64.b64decode(frame_b64)
+                    yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n")
+                await asyncio.sleep(0.1)
+            except Exception:
+                break
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace;boundary=frame")
 
 
