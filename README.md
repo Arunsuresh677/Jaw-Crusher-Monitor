@@ -26,7 +26,7 @@
 
 | Metric | Value |
 |---|---|
-| **Inference throughput** | ~1.5 million events / month — 24/7, no cloud |
+| **Inference throughput** | ~4.5 million events / month during 10-hour production shifts — no cloud |
 | **End-to-end latency** | < 100 ms (RTSP capture → VFD command) |
 | **Infrastructure cost** | $60 Raspberry Pi 5 vs. $15,000+ dedicated SCADA terminal — **99.6% reduction** |
 | **Stone-stuck response** | Automated alert + VFD slowdown at 15 s threshold (was: manual observation) |
