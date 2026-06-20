@@ -131,6 +131,15 @@ class VFDController:
         """
         if not self._enabled:
             return
+        # Run ABB init sequence asynchronously if needed — avoids blocking
+        # the thread pool with time.sleep() during the 2-second handshake.
+        if self._connected and not self._initialized:
+            await self._run_init_sequence()
+            if not self._initialized:
+                self._total_errors += 1
+                self._consecutive_errors += 1
+                return
+            self._last_rpm = -1   # force write after re-init
         if rpm == self._last_rpm:
             return
         await asyncio.to_thread(self._sync_write_speed, rpm)
@@ -227,39 +236,42 @@ class VFDController:
             self._connected   = False
             self._initialized = False
 
-    def _sync_init_sequence(self):
+    async def _run_init_sequence(self):
         """
-        Run the ABB Drives profile start-up handshake:
-            CW = 0x0476  (PREPARE)
-            CW = 0x0477  (SWITCH_ON)
-        After this the drive is in "Switched on" / "Ready to run" state and the
-        first 0x047F (RUN) command will actually start it.
+        ABB Drives profile start-up handshake — runs asynchronously so the
+        1-second delays between steps free the event loop instead of blocking
+        a thread pool worker.
 
-        Skipped silently for non-ABB profiles (Delta, Siemens, etc.).
+            CW = 0x0476  (PREPARE)    → await asyncio.sleep(1.0)
+            CW = 0x0477  (SWITCH_ON)  → await asyncio.sleep(1.0)
+
+        After this the drive is in "Switched on" state and the first RUN
+        command (0x047F) will start it.  Skipped for non-ABB profiles.
         """
         from config import (
             VFD_INIT_SEQUENCE, VFD_PROFILE,
             VFD_CMD_REGISTER, VFD_SLAVE_ID,
             VFD_CMD_PREPARE, VFD_CMD_SWITCH_ON,
         )
-        if not VFD_INIT_SEQUENCE:
-            self._initialized = True
-            return
-        if VFD_PROFILE != "abb":
+        if not VFD_INIT_SEQUENCE or VFD_PROFILE != "abb":
             self._initialized = True
             return
         try:
-            rr = self._client.write_register(
+            rr = await asyncio.to_thread(
+                self._client.write_register,
                 VFD_CMD_REGISTER, VFD_CMD_PREPARE, slave=VFD_SLAVE_ID,
             )
-            if rr.isError(): raise RuntimeError(f"PREPARE write error: {rr}")
-            time.sleep(1.0)
+            if rr.isError():
+                raise RuntimeError(f"PREPARE write error: {rr}")
+            await asyncio.sleep(1.0)   # hardware settling — event loop stays free
 
-            rr = self._client.write_register(
+            rr = await asyncio.to_thread(
+                self._client.write_register,
                 VFD_CMD_REGISTER, VFD_CMD_SWITCH_ON, slave=VFD_SLAVE_ID,
             )
-            if rr.isError(): raise RuntimeError(f"SWITCH_ON write error: {rr}")
-            time.sleep(1.0)
+            if rr.isError():
+                raise RuntimeError(f"SWITCH_ON write error: {rr}")
+            await asyncio.sleep(1.0)   # hardware settling — event loop stays free
 
             self._initialized = True
             log.info(
@@ -300,12 +312,12 @@ class VFDController:
                     )
                 return
 
-        # Run init sequence once after (re)connect (ABB only)
+        # Init is handled asynchronously in set_speed before reaching here.
+        # If still not initialized (e.g. reconnect just happened), bail out —
+        # set_speed will call _run_init_sequence on the next cycle.
         if not self._initialized:
-            self._sync_init_sequence()
-            if not self._initialized:
-                self._total_errors += 1
-                return
+            self._total_errors += 1
+            return
 
         # Safety clamp
         original_rpm = rpm
