@@ -242,6 +242,68 @@ Jaw-Crusher-Monitor/
 
 ---
 
+## Model Evaluation
+
+> **Real metrics coming soon** — run `evaluate.py` on the labeled test set to generate the confusion matrix and per-class scores. Results will be added here.
+
+To generate on the Pi:
+
+```bash
+python evaluate.py --data /path/to/dataset --weights weights/best.pt
+# outputs model_eval/eval_results.txt + model_eval/confusion_matrix.png
+```
+
+---
+
+## Scaling to a Fleet
+
+The current architecture is intentionally single-site. Here is how it would extend to 500 crushers across multiple quarries:
+
+### What stays the same
+Each crusher keeps its own **Raspberry Pi 5 + camera + VFD** — edge inference stays on-device. No frame data leaves the site. Latency and VFD response time are unaffected by fleet size.
+
+### What changes
+
+```
+                    ┌─────────────────────────────────────┐
+                    │        Central Cloud / On-Prem       │
+                    │                                     │
+                    │  MQTT Broker (e.g. EMQX / Mosquitto)│
+                    │  Time-series DB (InfluxDB / TimescaleDB)
+                    │  Fleet dashboard (Grafana)           │
+                    │  Alert aggregator                   │
+                    │  OTA update service                 │
+                    └────────────────┬────────────────────┘
+                                     │  MQTT over TLS
+              ┌──────────────────────┼──────────────────────┐
+              ▼                      ▼                      ▼
+    ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+    │  Site A — Pi 5  │   │  Site B — Pi 5  │   │  Site N — Pi 5  │
+    │  crusher_1      │   │  crusher_1      │   │  crusher_1      │
+    │  crusher_2      │   │  crusher_2      │   │     ...         │
+    │  Local FastAPI  │   │  Local FastAPI  │   │  Local FastAPI  │
+    └─────────────────┘   └─────────────────┘   └─────────────────┘
+```
+
+| Concern | Single site (current) | Fleet (500 crushers) |
+|---|---|---|
+| **Telemetry transport** | WebSocket push to LAN clients | MQTT pub/sub over TLS to central broker |
+| **Storage** | Local SQLite WAL | Central TimescaleDB / InfluxDB with per-device tags |
+| **Dashboards** | Per-site web UI + Flutter app | Grafana fleet overview + per-site drill-down |
+| **Alerts** | Local alert list + push notification | PagerDuty / OpsGenie integration at broker |
+| **Model updates** | Manual `scp` to Pi | OTA update service — signed `.pt` push via MQTT |
+| **Auth** | Single HTTP Basic user | Per-device mTLS certificates + central IAM |
+| **Config** | `.env` per device | Fleet config service — push config diffs via MQTT |
+
+### Key design constraints at scale
+
+- **Edge inference is non-negotiable** — sending raw video to cloud at 10 FPS × 500 sites = ~500 Mbps upstream. Inference stays on Pi.
+- **MQTT over WebSocket** — MQTT is designed for thousands of low-bandwidth IoT devices; WebSocket is not.
+- **Per-device SQLite stays** — local buffer survives network outages. Sync to central DB on reconnect (store-and-forward pattern).
+- **Model versioning** — each Pi pins its `ultralytics` version and model hash. Central service tracks which version each device is running.
+
+---
+
 ## Setup
 
 ### Requirements
