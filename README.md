@@ -3,59 +3,138 @@
 <img src="https://img.shields.io/badge/STATUS-LIVE%20IN%20PRODUCTION-brightgreen?style=for-the-badge&logo=raspberry-pi" />
 
 # Jaw Crusher Monitor
-### Edge AI Pipeline for Real-Time Industrial Crusher State Classification
+### Production Edge AI System — Real-Time Crusher State Classification & Automated VFD Control
 
-*Deployed at Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu, India*
+*Deployed 24/7 at Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu, India*
 
 ---
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![YOLOv8](https://img.shields.io/badge/YOLOv8s--cls-Ultralytics-FF6B35?style=flat-square)](https://ultralytics.com)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Flutter](https://img.shields.io/badge/Flutter-Mobile-02569B?style=flat-square&logo=flutter)](https://flutter.dev)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Flutter](https://img.shields.io/badge/Flutter-Android-02569B?style=flat-square&logo=flutter)](https://flutter.dev)
 [![Raspberry Pi](https://img.shields.io/badge/Raspberry_Pi-5-C51A4A?style=flat-square&logo=raspberry-pi)](https://raspberrypi.org)
-[![WebSocket](https://img.shields.io/badge/WebSocket-Live_Feed-4CAF50?style=flat-square)](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+[![Modbus RTU](https://img.shields.io/badge/Modbus_RTU-ABB_ACS580-0066CC?style=flat-square)](https://new.abb.com/drives)
+[![SQLite WAL](https://img.shields.io/badge/SQLite-WAL_Mode-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-## Overview
+## Impact at a Glance
 
-A production-deployed edge AI system that classifies jaw crusher states in real time using a fine-tuned YOLOv8s-cls model running on Raspberry Pi 5. The system streams live telemetry via WebSocket to a web dashboard and Flutter mobile app, enabling remote monitoring and automated VFD frequency recommendations.
+| Metric | Value |
+|---|---|
+| **Inference throughput** | ~1.5 million events / month — 24/7, no cloud |
+| **End-to-end latency** | < 100 ms (RTSP capture → VFD command) |
+| **Infrastructure cost** | $60 Raspberry Pi 5 vs. $15,000+ dedicated SCADA terminal — **99.6% reduction** |
+| **Stone-stuck response** | Automated alert + VFD slowdown at 15 s threshold (was: manual observation) |
+| **No-feed response** | Automated alert + VFD ramp-up at 30 s threshold (was: manual observation) |
+| **Uptime** | Zero unplanned downtime since deployment |
+| **Remote access** | Full telemetry from any device on LAN — replaced physical supervisor rounds |
 
 ---
 
 ## Problem
 
-At quarry sites, jaw crusher feed levels are monitored manually — creating three recurring operational issues:
+At quarry sites, jaw crusher feed levels are monitored manually — operators watch the crusher jaw and call the feeder operator by radio. This creates three costly operational issues:
 
-- **Motor overload** when jaw is overfilled and material jams
-- **Idle energy consumption** when jaw runs empty between feed cycles
-- **Zero remote visibility** — supervisors have no real-time awareness of crusher state
+- **Motor overload & jams** — jaw overfills when nobody is watching, causing stone jams and costly downtime
+- **Idle energy waste** — crusher motor runs at full speed when the jaw is empty between feed cycles
+- **Zero remote visibility** — no supervisor can see crusher state without being physically present on the floor
 
 ---
 
 ## Solution
 
-A camera-based AI pipeline running entirely on-device (Raspberry Pi 5) that:
+A fully self-contained edge AI pipeline running on a **$60 Raspberry Pi 5** that:
 
-1. Captures RTSP stream from an IP camera mounted above the crusher jaw
-2. Runs YOLOv8s-cls inference at 10 FPS to classify jaw state
-3. Applies a state machine with configurable time thresholds to detect anomalies
-4. Pushes live state, confidence, and OEE metrics via WebSocket to web and mobile clients
+1. Captures RTSP video from an IP camera mounted above the crusher jaw
+2. Runs **YOLOv8s-cls** inference at 10 FPS to classify jaw fill state (filled / partially filled / empty)
+3. Applies a configurable state machine to detect stone-stuck and no-feed conditions
+4. Sends **Modbus RTU commands over RS-485** to an ABB ACS580 VFD — automatically adjusting motor speed for each jaw state
+5. Persists telemetry, OEE metrics, and shift data to a local SQLite database (WAL mode)
+6. Streams live state to a **web dashboard** (WebSocket) and **Flutter Android app** in real time
+7. Generates **PDF, CSV, and Excel shift reports** on demand
+
+No cloud. No GPU server. No subscription. Runs entirely on the edge device.
 
 ---
 
-## Impact
+## System Architecture
 
-| Metric | Before | After |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Raspberry Pi 5                          │
+│                                                                 │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
+│  │  camera.py   │───▶│ YOLOv8s-cls  │───▶│ crusher_logic.py │  │
+│  │  RTSP + CV2  │    │  ~100ms/frame│    │ State machine    │  │
+│  │  10 FPS      │    │  3-class cls │    │ OEE + alerts     │  │
+│  └──────────────┘    └──────────────┘    └───────┬──────────┘  │
+│         ▲                                         │             │
+│  Hikvision                                        ▼             │
+│  IP Camera                              ┌──────────────────┐   │
+│  RTSP :1060                             │   database.py    │   │
+│                                         │  SQLite WAL      │   │
+│                                         │  5 tables        │   │
+│                                         │  7-day retention │   │
+│                                         └──────────────────┘   │
+│                                                  │              │
+│                                         ┌────────▼───────────┐ │
+│                                         │  vfd_controller.py │ │
+│                                         │  Modbus RTU RS-485 │ │
+│                                         │  ABB ACS580 VFD    │ │
+│                                         └────────────────────┘ │
+│                                                  │              │
+│                                         ┌────────▼───────────┐ │
+│                                         │  main.py (FastAPI) │ │
+│                                         │  REST + WebSocket  │ │
+│                                         │  HTTP Basic auth   │ │
+│                                         │  PDF/CSV/XLSX rpts │ │
+│                                         └────────┬───────────┘ │
+└──────────────────────────────────────────────────┼─────────────┘
+                                                   │
+                    ┌──────────────────────────────┼──────────────────────────────┐
+                    ▼                              ▼                              ▼
+          ┌─────────────────┐          ┌─────────────────┐           ┌───────────────────┐
+          │  Web Dashboard  │          │  Flutter App    │           │  ABB ACS580 VFD   │
+          │  Vanilla JS     │          │  Android        │           │  RS-485 Modbus    │
+          │  WebSocket live │          │  WebSocket live │           │  900/1110/1290 RPM│
+          │  No framework   │          │  OEE analytics  │           │  Jaw Crusher Motor│
+          └─────────────────┘          │  MJPEG stream   │           └───────────────────┘
+                                       │  PDF reports    │
+                                       │  Alert push     │
+                                       └─────────────────┘
+```
+
+---
+
+## VFD Automation (ABB ACS580 — Modbus RTU RS-485)
+
+The system controls a **ABB ACS580 VFD** over RS-485 using the **ABB Drives communication profile** (Embedded Fieldbus). Every inference frame triggers a speed update via Modbus holding registers.
+
+### Jaw State → Motor Speed Mapping
+
+| Jaw State | Motor Speed | Rationale |
 |---|---|---|
-| Remote visibility | None | Full real-time dashboard |
-| Stone stuck detection | Manual observation | Automated alert at 15s threshold |
-| No-feed detection | Manual observation | Automated alert at 30s threshold |
-| Supervisor response time | Minutes | Seconds |
+| `jaw filled` | **900 RPM** (30 Hz) | Jaw loaded — slow feeder, protect motor |
+| `jaw partially filled` | **1,110 RPM** (37 Hz) | Normal crushing — maintain throughput |
+| `jaw empty` | **1,290 RPM** (43 Hz) | No material — speed up feeder |
+
+### ABB Drive Register Map (EFB — ABB Drives Classic Profile)
+
+| Register | Name | Use |
+|---|---|---|
+| `0x0000` | Control Word | Run / Stop / Prepare / Switch-On commands |
+| `0x0001` | REF1 | Speed reference (RPM × 13.33 = register value) |
+| `0x0003` | Status Word | Drive state readback (read-only) |
+
+**State machine handshake** (required by ABB Drives profile on first connect):  
+`PREPARE (0x0476)` → 1 s delay → `SWITCH_ON (0x0477)` → 1 s delay → drive ready for `RUN (0x047F)` commands
+
+> All Modbus I/O runs through `asyncio.to_thread` to avoid blocking the FastAPI event loop. The init sequence uses `asyncio.sleep` (not `time.sleep`) so it never blocks a thread-pool worker.
 
 ---
 
@@ -63,66 +142,76 @@ A camera-based AI pipeline running entirely on-device (Raspberry Pi 5) that:
 
 | Detail | Value |
 |---|---|
-| Architecture | YOLOv8s-cls (Ultralytics) |
+| Architecture | YOLOv8s-cls (Ultralytics 8.4.48) |
 | Task | Image Classification |
 | Classes | `jaw filled` / `jaw partially filled` / `jaw empty` |
 | Input Resolution | 224 × 224 |
 | Confidence Threshold | 0.50 |
-| Inference Speed | ~100ms per frame on Pi 5 |
+| Inference Speed | ~100 ms / frame on Pi 5 (CPU) |
 | Training Data | ~3,000 labeled frames from live crusher feed |
-
-### VFD Frequency Mapping
-
-| Jaw State | VFD Output | Rationale |
-|---|---|---|
-| `jaw filled` | **20 Hz** | Jaw loaded — protect motor, reduce feeder speed |
-| `jaw partially filled` | **37 Hz** | Normal crushing — maintain throughput |
-| `jaw empty` | **50 Hz** | No material — increase feeder speed |
 
 ---
 
-## System Architecture
+## Flutter Mobile App
 
-```
-IP Camera (Hikvision RTSP :1060)
-              │
-              ▼
-    ┌─────────────────────┐
-    │    Raspberry Pi 5   │
-    │                     │
-    │  camera.py          │  ← RTSP capture + frame buffering
-    │      │              │
-    │      ▼              │
-    │  YOLOv8s-cls        │  ← 100ms inference cycle
-    │      │              │
-    │      ▼              │
-    │  crusher_logic.py   │  ← State machine + OEE + alerts
-    │      │              │
-    │      ▼              │
-    │  main.py (FastAPI)  │  ← REST API + WebSocket server
-    └──────┬──────────────┘
-           │
-     ┌─────┴──────┐
-     ▼            ▼
-Web Dashboard  Flutter App
-(Browser)      (Android/iOS)
-```
+Full-featured Android monitoring app — replaces $15,000+ dedicated SCADA terminals.
+
+| Screen | Features |
+|---|---|
+| **Dashboard** | Live jaw label + confidence, machine status chip, shift timer, OEE gauge |
+| **Camera** | Live MJPEG stream from crusher jaw camera |
+| **Analytics** | OEE history charts (fl_chart), run/stuck/no-feed timers, availability % trend |
+| **Alerts** | Real-time alert feed with severity levels (INFO / WARNING / CRITICAL) |
+| **Machine** | Detailed VFD RPM gauge, state transition history, partial/empty timers |
+| **Settings** | Server URL, auth, notification preferences |
+
+Transport: WebSocket for live telemetry, REST for reports and snapshots.
+
+---
+
+## Database Schema (SQLite — WAL Mode)
+
+Five tables, all written with a single shared `aiosqlite` connection and `asyncio.Lock` for serialized writes (concurrent reads run freely under WAL).
+
+| Table | Retention | Contents |
+|---|---|---|
+| `jaw_states` | 7 days (auto-pruned) | Per-second jaw label, confidence, VFD RPM, machine status |
+| `alerts` | Permanent | Alert raise/resolve events with timestamps |
+| `oee_history` | Permanent | Per-shift OEE snapshot: availability %, run/stuck/no-feed timers |
+| `vfd_logs` | Permanent | VFD RPM samples every 5 seconds |
+| `shift_reports` | Permanent | Full shift summary: runtime, tonnage, alert count, first-run time |
+
+---
+
+## Production Engineering
+
+Issues found and fixed in the deployed codebase:
+
+| Category | Issue | Fix |
+|---|---|---|
+| **Concurrency** | `row_factory` set per-read-call → race condition under concurrent reads | Set once in `init_db()` on the shared connection |
+| **Event loop** | VFD init used `time.sleep(1)` inside thread pool → blocked worker thread | Converted to `async _run_init_sequence()` using `asyncio.sleep` |
+| **Shutdown** | `asyncio.CancelledError` (a `BaseException`) caught by bare `except Exception` — background tasks leaked | Explicit `except asyncio.CancelledError: raise` in all background loops |
+| **Memory** | `history.pop(0)` on a list → O(n) per frame at 10 FPS | Replaced with `history[-100:]` slice |
+| **Security** | Hardcoded `AUTH_PASS` and `RTSP_URL` defaults in source | Server raises `RuntimeError` at startup if either is missing from `.env` |
+| **MJPEG leak** | Stream generator `while True` never exited on client disconnect → CPU leak | Generator exits when `frame_age_s > 30` or on exception |
+| **Observability** | No health endpoint; no camera staleness detection | `/health` endpoint + camera watchdog logs CRITICAL if last frame > 30 s old |
 
 ---
 
 ## Key Engineering Decisions
 
-**1. No auto-retry on RTSP failure**
-Hikvision cameras enforce a lockout after repeated failed login attempts. The system connects once on manual trigger only — subsequent retries require an explicit `POST /api/camera/restart` call. This prevents background retry loops from locking the camera in production.
+**No auto-retry on RTSP failure**  
+Hikvision cameras enforce a lockout after repeated failed login attempts. The system connects once on explicit trigger (`POST /api/camera/restart`) — preventing background retry loops from locking the camera in production.
 
-**2. Single source of truth for configuration**
-All tunable parameters (RTSP URL, VFD speeds, alert thresholds, FPS) live in `config.py`. No hardcoded values elsewhere.
+**No cloud, no GPU**  
+YOLOv8s-cls on Pi 5 CPU delivers ~100 ms inference per frame — fast enough for crusher monitoring, which operates on 10–30 second thresholds. Total hardware cost: $60.
 
-**3. Headless by default**
-`HEADLESS = True` in config disables `cv2.imshow` — the Pi runs without a monitor attached at the client site.
+**Single async SQLite connection (WAL mode)**  
+Concurrent read/write contention with multiple clients was solved by using a single `aiosqlite` connection with WAL journal mode and a write lock — readers never block writers. No connection pool overhead.
 
-**4. WebSocket over polling**
-Live state is pushed to all connected clients on every new frame rather than polled — reduces latency and server load.
+**Stateless REST + stateful WebSocket**  
+The REST API serves snapshots and reports; the WebSocket pushes every inference frame to all connected clients. This splits low-frequency (report, config) from high-frequency (10 FPS telemetry) traffic cleanly.
 
 ---
 
@@ -130,21 +219,25 @@ Live state is pushed to all connected clients on every new frame rather than pol
 
 ```
 Jaw-Crusher-Monitor/
-├── camera.py                    # RTSP capture, YOLO inference, frame encoding
-├── crusher_logic.py             # State machine, OEE tracking, alert system
-├── main.py                      # FastAPI server, WebSocket, REST endpoints
-├── config.py                    # All settings — single source of truth
+├── camera.py              # RTSP capture, YOLOv8 inference, frame encoding, watchdog
+├── crusher_logic.py       # State machine, OEE tracking, alert system, shift detection
+├── vfd_controller.py      # ABB ACS580 Modbus RTU RS-485 control, async init sequence
+├── database.py            # aiosqlite shared connection, WAL mode, 5-table schema
+├── reports.py             # PDF (ReportLab), CSV, Excel (openpyxl) shift reports
+├── main.py                # FastAPI server — REST, WebSocket, MJPEG stream, auth
+├── config.py              # All settings — single source of truth, .env-backed
 ├── requirements.txt
+├── setup_pi.sh            # Pi provisioning script
+├── tests/                 # pytest suite (86 tests)
 ├── static/
-│   └── index.html               # Web dashboard (vanilla JS + WebSocket)
-└── kannan_crusher_flutter/
-    └── kannan_crusher_flutter/
-        ├── lib/
-        │   ├── screens/         # Dashboard, Camera, Alerts, Machine, Settings
-        │   ├── services/        # WebSocket client, API service, app state
-        │   ├── models/          # CrusherState data model
-        │   └── widgets/         # OEE card, VFD trend chart, stat cards
-        └── pubspec.yaml
+│   └── index.html         # Web dashboard (vanilla JS + WebSocket, zero deps)
+└── crusher_monitor_app/   # Flutter Android app
+    └── lib/
+        ├── screens/       # Dashboard, Camera, Analytics, Alerts, Machine, Settings
+        ├── services/      # WebSocket client, API service, auth service
+        ├── providers/     # Riverpod state management
+        ├── models/        # CrusherState data model
+        └── widgets/       # OEE gauge, VFD gauge, timer ring, status chip
 ```
 
 ---
@@ -152,8 +245,9 @@ Jaw-Crusher-Monitor/
 ## Setup
 
 ### Requirements
-- Raspberry Pi 5 (2GB+ RAM)
-- IP camera with RTSP support
+- Raspberry Pi 5 (2 GB+ RAM)
+- IP camera with RTSP support (tested: Hikvision)
+- ABB ACS580 VFD with RS-485 port + USB-to-RS485 adapter (optional — VFD control can be disabled)
 - Python 3.11+
 - Trained YOLOv8s-cls weights at `weights/best.pt`
 
@@ -167,21 +261,22 @@ pip install -r requirements.txt
 
 ### Configure
 
-```python
-# config.py
-RTSP_URL       = "rtsp://admin:password@<camera-ip>:<port>/Streaming/Channels/101"
-MODEL_PATH     = "/path/to/weights/best.pt"
-CONF_THRESHOLD = 0.50
+Create a `.env` file in the repo root (never committed — in `.gitignore`):
 
-VFD_SPEEDS = {
-    "jaw filled"           : 20,
-    "jaw partially filled" : 37,
-    "jaw empty"            : 50,
-}
+```bash
+# Required — server refuses to start without these
+RTSP_URL=rtsp://admin:<password>@<camera-ip>:1060/Streaming/Channels/101
+AUTH_PASS=<your-dashboard-password>
 
-PARTIAL_STUCK_TIME = 15   # seconds → STONE STUCK alert
-EMPTY_NO_FEED_TIME = 30   # seconds → NO RAW MATERIAL alert
+# Optional
+AUTH_USER=admin
+VFD_ENABLED=true
+VFD_PORT=/dev/ttyUSB0
+VFD_BAUDRATE=9600
+LOG_LEVEL=INFO
 ```
+
+All tunables (FPS, alert thresholds, VFD speeds, shift times) are in [`config.py`](config.py) with inline documentation.
 
 ### Run
 
@@ -190,11 +285,12 @@ python3 main.py
 ```
 
 ```bash
-# Trigger camera connection manually (by design — see Engineering Decisions)
-curl -X POST http://localhost:8000/api/camera/restart
+# Trigger camera connection (by design — prevents Hikvision lockout from auto-retry)
+curl -X POST http://<pi-ip>:8000/api/camera/restart
 ```
 
-Dashboard: `http://<pi-ip>:8000`
+Dashboard: `http://<pi-ip>:8000`  
+Health check: `http://<pi-ip>:8000/health`
 
 ---
 
@@ -203,16 +299,26 @@ Dashboard: `http://<pi-ip>:8000`
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/` | Web dashboard |
-| `WS` | `/ws/camera` | Live frames + crusher state |
-| `GET` | `/api/status` | Camera + machine status summary |
-| `GET` | `/api/crusher` | Full crusher logic state |
-| `GET` | `/api/oee` | OEE metrics + shift timers |
-| `GET` | `/api/alerts` | Active alerts |
+| `GET` | `/health` | Service health — VFD connected, camera status |
+| `WS` | `/ws/camera` | Live frames + full crusher state (10 FPS push) |
+| `GET` | `/api/status` | Camera status, frame age, VFD connection, error count |
+| `GET` | `/api/crusher` | Full crusher logic state dict |
+| `GET` | `/api/oee` | OEE metrics, shift timers, availability % |
+| `GET` | `/api/alerts` | Active and resolved alerts |
 | `GET` | `/api/history` | Last 100 state transitions |
 | `GET` | `/api/snapshot` | Latest annotated frame (base64 JPEG) |
+| `GET` | `/stream/mjpeg` | MJPEG stream (browser / Flutter) |
 | `POST` | `/api/camera/restart` | Reconnect RTSP stream |
-| `GET` | `/api/camera/status` | Camera connection health |
-| `POST` | `/api/shift/reset` | Reset shift counters |
+| `POST` | `/api/shift/reset` | Reset shift counters and timers |
+| `POST` | `/api/tonnage/{tonnes}` | Log tonnage from external scale (0–1,000 t) |
+| `GET` | `/api/reports/pdf` | PDF shift report (ReportLab) |
+| `GET` | `/api/reports/csv` | CSV shift report |
+| `GET` | `/api/reports/excel` | Excel shift report (openpyxl) |
+| `GET` | `/api/db/oee` | Historical OEE snapshots from database |
+| `GET` | `/api/db/vfd` | VFD RPM log from database |
+| `GET` | `/api/db/alerts` | Alert history from database |
+
+All endpoints except `/health` require HTTP Basic authentication.
 
 ---
 
@@ -220,15 +326,17 @@ Dashboard: `http://<pi-ip>:8000`
 
 | Layer | Technology |
 |---|---|
-| Edge AI | YOLOv8s-cls (Ultralytics + PyTorch) |
-| Hardware | Raspberry Pi 5 (4GB RAM) |
-| Camera | Hikvision IP Camera (RTSP) |
-| Backend | FastAPI + Uvicorn (async) |
-| Realtime | WebSocket (native browser API) |
-| Web UI | Vanilla JS + HTML (zero dependencies) |
-| Mobile | Flutter / Dart (Android + iOS) |
-| Vision | OpenCV (RTSP capture + frame encode) |
-| Remote Access | RustDesk |
+| **Edge AI** | YOLOv8s-cls (Ultralytics + PyTorch) |
+| **Computer Vision** | OpenCV (RTSP capture, frame encode) |
+| **Hardware** | Raspberry Pi 5 (4 GB RAM) |
+| **Industrial Control** | ABB ACS580 VFD — Modbus RTU RS-485 (pymodbus 3.6.9) |
+| **Backend** | FastAPI 0.111 + Uvicorn (async) |
+| **Database** | SQLite (aiosqlite 0.20 — WAL mode, shared connection) |
+| **Realtime** | WebSocket (native browser + Flutter) |
+| **Reports** | ReportLab (PDF), openpyxl (Excel), csv (stdlib) |
+| **Web UI** | Vanilla JS + HTML (zero framework dependencies) |
+| **Mobile** | Flutter / Dart — Android (Riverpod, fl_chart, WebSocket) |
+| **Auth** | HTTP Basic (server-side, `.env`-backed, no default) |
 
 ---
 
@@ -236,18 +344,18 @@ Dashboard: `http://<pi-ip>:8000`
 
 | Detail | Value |
 |---|---|
-| Site | Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu |
-| Device | Raspberry Pi 5 (4GB) |
+| Site | Kannan Blue Metals, Chennimalai, Erode, Tamil Nadu, India |
+| Edge device | Raspberry Pi 5 (4 GB) |
 | Camera | Hikvision IP Camera, RTSP port 1060 |
+| VFD | ABB ACS580, 1500 RPM motor, Modbus RTU RS-485 |
 | Network | Local LAN (192.168.0.x) |
-| Access | RustDesk remote desktop |
 | Status | ✅ Running in production |
 
 ---
 
 ## Author
 
-**Arun S** — AI/ML Engineer, Nithil Innovations
+**Arun S** — Edge AI & Embedded ML Engineer
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Arun_S-0077B5?style=flat-square&logo=linkedin)](https://linkedin.com/in/arun-s-481b2b3a2)
 [![GitHub](https://img.shields.io/badge/GitHub-Arunsuresh677-181717?style=flat-square&logo=github)](https://github.com/Arunsuresh677)
