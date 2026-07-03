@@ -1,0 +1,7 @@
+[run]
+omit =
+    camera.py
+    main.py
+    vfd_controller.py
+    test_vfd.py
+    evaluate.py
