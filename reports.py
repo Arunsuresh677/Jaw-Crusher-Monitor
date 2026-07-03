@@ -474,10 +474,11 @@ def build_shift_pdf(shift_rows: list, live_state: dict) -> bytes:
 
 
 def build_shift_csv(shift_rows: list, live_state: dict | None = None) -> str:
-    """Legacy wrapper — redirects to DB-based builder using live state."""
+    """Build CSV with optional daily summary block followed by shift history rows."""
     from datetime import date as _date
-    today   = _date.today().strftime("%Y-%m-%d")
-    summary = {}
+    today = _date.today().strftime("%Y-%m-%d")
+    buf = io.StringIO()
+
     if live_state:
         summary = {
             "run_secs":         _hms_to_secs(live_state.get("timer_run",     "00:00:00")),
@@ -490,4 +491,22 @@ def build_shift_csv(shift_rows: list, live_state: dict | None = None) -> str:
             "peak_vfd_hz":      0,
             "avg_vfd_hz":       0,
         }
-    return build_period_csv(summary, "Daily Report", today, today)
+        buf.write(build_period_csv(summary, "Daily Report", today, today))
+        buf.write(f"Tonnage (tonnes),{live_state.get('tonnage_actual', 0)}\n")
+        buf.write("\n")
+    else:
+        buf.write("# Kannan Blue Metals — Crusher Monitor Report\n")
+        buf.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        buf.write("\n")
+
+    if shift_rows:
+        cols = [
+            "timestamp", "shift_type", "shift_start", "total_runtime",
+            "total_stuck", "total_no_feed", "availability_pct",
+            "tonnage_actual", "total_alerts",
+        ]
+        buf.write(",".join(cols) + "\n")
+        for row in shift_rows:
+            buf.write(",".join(str(row.get(c, "")) for c in cols) + "\n")
+
+    return buf.getvalue()

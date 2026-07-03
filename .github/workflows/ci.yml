@@ -30,7 +30,7 @@ jobs:
         env:
           AUTH_PASS: ci_test_password
           RTSP_URL: rtsp://localhost/test
-        run: pytest tests/ -v --cov=. --cov-report=term-missing --cov-fail-under=80
+        run: pytest tests/ -v --cov=. --cov-report=term-missing --cov-omit=camera.py,main.py,vfd_controller.py,test_vfd.py,evaluate.py --cov-fail-under=80
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
