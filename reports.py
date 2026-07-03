@@ -6,7 +6,6 @@ All reports query the database for the requested date range.
 Called by GET /api/reports/pdf, /api/reports/csv, /api/reports/excel
 """
 
-import csv
 import io
 import logging
 from datetime import datetime
@@ -14,7 +13,7 @@ from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
@@ -132,14 +131,18 @@ BLUE   = colors.HexColor("#1A6FD4")
 
 
 def _avail_color(val: float) -> colors.HexColor:
-    if val >= 85: return GREEN
-    if val >= 65: return ORANGE
+    if val >= 85:
+        return GREEN
+    if val >= 65:
+        return ORANGE
     return RED
 
 
 def _alert_color(n: int) -> colors.HexColor:
-    if n > 50: return RED
-    if n > 10: return ORANGE
+    if n > 50:
+        return RED
+    if n > 10:
+        return ORANGE
     return GREEN
 
 

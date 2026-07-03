@@ -21,7 +21,7 @@ from crusher_logic import crusher_logic
 from config import (
     MODEL_PATH, RTSP_URL, CONF_THRESHOLD,
     FRAME_INTERVAL, SAVE_ANNOTATED, OUTPUT_DIR,
-    LOG_DIR, HEADLESS, VFD_SPEEDS,
+    HEADLESS, VFD_SPEEDS,
 )
 
 log = logging.getLogger(__name__)

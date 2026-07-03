@@ -158,10 +158,10 @@ class TestBuildShiftCSV:
         """The shift history section must be valid CSV."""
         result = build_shift_csv(sample_shift_rows, sample_live_state)
         # Extract only data rows (skip # comment lines)
-        data_lines = [l for l in result.splitlines() if not l.startswith("#") and l.strip()]
+        data_lines = [line for line in result.splitlines() if not line.startswith("#") and line.strip()]
         # Find the header row
         header_idx = next(
-            (i for i, l in enumerate(data_lines) if "timestamp" in l), None
+            (i for i, line in enumerate(data_lines) if "timestamp" in line), None
         )
         assert header_idx is not None, "No CSV header found"
         csv_section = "\n".join(data_lines[header_idx:])

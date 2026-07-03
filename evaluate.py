@@ -24,7 +24,6 @@ Outputs:
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -189,8 +188,10 @@ def run_eval(data_dir: str, weights: str, conf: float, img_size: int):
         cmap = LinearSegmentedColormap.from_list("blue", ["#ffffff", "#1565C0"])
         im   = ax.imshow(cm, cmap=cmap)
         plt.colorbar(im, ax=ax)
-        ax.set_xticks(range(n_classes)); ax.set_xticklabels(classes, rotation=30, ha="right")
-        ax.set_yticks(range(n_classes)); ax.set_yticklabels(classes)
+        ax.set_xticks(range(n_classes))
+        ax.set_xticklabels(classes, rotation=30, ha="right")
+        ax.set_yticks(range(n_classes))
+        ax.set_yticklabels(classes)
         ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
         ax.set_title(f"Confusion Matrix — YOLOv8s-cls\nAccuracy: {accuracy*100:.1f}%  |  Weighted F1: {weighted_f1*100:.1f}%")
         for i in range(n_classes):
@@ -204,7 +205,7 @@ def run_eval(data_dir: str, weights: str, conf: float, img_size: int):
         plt.close()
         print(f"  Confusion matrix image saved: {img_path}")
 
-    print(f"\n  Paste the output above to Arun to add real metrics to README.\n")
+    print("\n  Paste the output above to Arun to add real metrics to README.\n")
 
 
 if __name__ == "__main__":

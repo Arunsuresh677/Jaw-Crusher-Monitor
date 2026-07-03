@@ -5,8 +5,6 @@ No hardware required — runs fully on local PC.
 """
 
 import time
-import pytest
-from unittest.mock import patch
 from crusher_logic import CrusherLogic, MachineStatus, AlertLevel, ElapsedTimer
 
 

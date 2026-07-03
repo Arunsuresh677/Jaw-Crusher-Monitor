@@ -6,7 +6,6 @@ No file system side effects — safe to run anywhere.
 
 import asyncio
 import pytest
-import aiosqlite
 import database
 
 
