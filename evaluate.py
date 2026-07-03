@@ -192,7 +192,8 @@ def run_eval(data_dir: str, weights: str, conf: float, img_size: int):
         ax.set_xticklabels(classes, rotation=30, ha="right")
         ax.set_yticks(range(n_classes))
         ax.set_yticklabels(classes)
-        ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
         ax.set_title(f"Confusion Matrix — YOLOv8s-cls\nAccuracy: {accuracy*100:.1f}%  |  Weighted F1: {weighted_f1*100:.1f}%")
         for i in range(n_classes):
             for j in range(n_classes):
