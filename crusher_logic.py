@@ -169,6 +169,9 @@ class CrusherLogic:
         # ── Shift-change detection cache (checked every 30 s) ──
         self._last_shift_check : float = 0.0
 
+        # ── Auto-saved shift report, picked up by the DB background task ──
+        self._pending_shift_snapshot : Optional[dict] = None
+
         # ── Shift timers (accumulated) ─────────────────────────
         self.timer_run      = ElapsedTimer("run")
         self.timer_idle     = ElapsedTimer("idle")
@@ -315,6 +318,9 @@ class CrusherLogic:
                         f"Shift change: {self.shift.shift_type.value} → "
                         f"{new_shift.shift_type.value}"
                     )
+                    # Snapshot the outgoing shift's state so the DB background
+                    # task can persist it to shift_reports before it's lost.
+                    self._pending_shift_snapshot = self._state_locked()
                     self.shift = new_shift
                     self._reset_shift_timers()
 
