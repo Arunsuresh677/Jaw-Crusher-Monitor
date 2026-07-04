@@ -73,7 +73,7 @@ async def main():
         await asyncio.sleep(3)
         await vfd.read_status()
         s = vfd.status
-        actual_hz = round(s['actual_rpm'] * MOTOR_RATED_HZ / MOTOR_RATED_RPM, 1)
+        actual_hz = round(s['actual_rpm'] * MOTOR_RATED_HZ / MOTOR_RATED_RPM, 1) if s['actual_rpm'] is not None else 'N/A'
         target_hz = round(s['target_rpm'] * MOTOR_RATED_HZ / MOTOR_RATED_RPM, 1)
         print(f"  target={target_hz} Hz  actual={actual_hz} Hz")
         print(f"  writes={s['total_writes']}  errors={s['total_errors']}  last_error='{s['last_error']}'")
