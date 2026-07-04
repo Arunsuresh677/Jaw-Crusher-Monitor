@@ -70,10 +70,12 @@ async def main():
         else:
             await vfd.set_speed(rpm)
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(3)
         await vfd.read_status()
         s = vfd.status
-        print(f"  target_rpm={s['target_rpm']}  actual_rpm={s['actual_rpm']}")
+        actual_hz = round(s['actual_rpm'] * MOTOR_RATED_HZ / MOTOR_RATED_RPM, 1)
+        target_hz = round(s['target_rpm'] * MOTOR_RATED_HZ / MOTOR_RATED_RPM, 1)
+        print(f"  target={target_hz} Hz  actual={actual_hz} Hz")
         print(f"  writes={s['total_writes']}  errors={s['total_errors']}  last_error='{s['last_error']}'")
         print()
 
