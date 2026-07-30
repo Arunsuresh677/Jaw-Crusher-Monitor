@@ -804,8 +804,9 @@ class TestDisconnect:
 
     def test_disconnect_calls_close_on_client(self):
         vfd = _make_connected_vfd()
+        mock_client = vfd._client   # save ref before disconnect clears it
         asyncio.run(vfd.disconnect())
-        vfd._client.close.assert_called_once()
+        mock_client.close.assert_called_once()
 
     def test_disconnect_noop_when_no_client(self):
         vfd = VFDController()

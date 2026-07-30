@@ -140,6 +140,9 @@ class VFDController:
                 self._consecutive_errors += 1
                 return
             self._last_rpm = -1   # force write after re-init
+        # Pre-clamp before dedup so comparison is apples-to-apples with _last_rpm
+        from config import VFD_MAX_RPM
+        rpm = max(0, min(rpm, VFD_MAX_RPM))
         if rpm == self._last_rpm:
             return
         await asyncio.to_thread(self._sync_write_speed, rpm)
@@ -259,7 +262,7 @@ class VFDController:
         try:
             rr = await asyncio.to_thread(
                 self._client.write_register,
-                VFD_CMD_REGISTER, VFD_CMD_PREPARE, slave=VFD_SLAVE_ID,
+                address=VFD_CMD_REGISTER, value=VFD_CMD_PREPARE, slave=VFD_SLAVE_ID,
             )
             if rr.isError():
                 raise RuntimeError(f"PREPARE write error: {rr}")
@@ -267,7 +270,7 @@ class VFDController:
 
             rr = await asyncio.to_thread(
                 self._client.write_register,
-                VFD_CMD_REGISTER, VFD_CMD_SWITCH_ON, slave=VFD_SLAVE_ID,
+                address=VFD_CMD_REGISTER, value=VFD_CMD_SWITCH_ON, slave=VFD_SLAVE_ID,
             )
             if rr.isError():
                 raise RuntimeError(f"SWITCH_ON write error: {rr}")
