@@ -736,7 +736,7 @@ class TestResetFault:
              patch("config.VFD_SLAVE_ID", 1):
             asyncio.run(vfd.reset_fault())
         vfd._client.write_register.assert_called_once_with(
-            0x0000, 0x04FF, slave=1
+            address=0x0000, value=0x04FF, slave=1
         )
 
     def test_reset_fault_exception_does_not_crash(self):

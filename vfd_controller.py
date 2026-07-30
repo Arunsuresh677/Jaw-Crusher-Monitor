@@ -161,7 +161,7 @@ class VFDController:
         try:
             await asyncio.to_thread(
                 self._client.write_register,
-                VFD_CMD_REGISTER, 0x04FF, slave=VFD_SLAVE_ID,
+                address=VFD_CMD_REGISTER, value=0x04FF, slave=VFD_SLAVE_ID,
             )
             log.info("VFD fault-reset command sent (CW=0x04FF)")
         except Exception as e:
