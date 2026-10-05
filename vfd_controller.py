@@ -369,6 +369,7 @@ class VFDController:
     def _sync_read_status(self):
         """Read SW (0x0003) and ACT1 (0x0004) for /api/vfd/status."""
         from config import VFD_SLAVE_ID, VFD_SCALE
+        time.sleep(0.1)   # RS-485 bus turnaround gap after any preceding write
         try:
             rr = self._client.read_holding_registers(
                 address=0x0003, count=2, slave=VFD_SLAVE_ID,
