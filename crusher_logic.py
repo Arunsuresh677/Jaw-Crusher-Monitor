@@ -161,6 +161,9 @@ class CrusherLogic:
 
         # ── VFD ────────────────────────────────────────────────
         self.target_vfd_rpm  : int   = 0      # RPM to send to VFD controller
+        self._vfd_candidate  : str   = ""     # label being held for confirmation
+        self._vfd_stable_since : float = 0.0  # when candidate first seen
+        self._VFD_CONFIRM_SECS : int  = 5     # seconds label must be stable before speed changes
 
         # ── Partial / Empty timers ─────────────────────────────
         self._partial_start : Optional[float] = None
@@ -218,8 +221,12 @@ class CrusherLogic:
 
             now = time.time()
 
-            # ── VFD target speed ──────────────────────────────
-            self.target_vfd_rpm = VFD_SPEEDS.get(label, 0)
+            # ── VFD target speed (debounced) ──────────────────
+            if label != self._vfd_candidate:
+                self._vfd_candidate   = label
+                self._vfd_stable_since = now
+            elif now - self._vfd_stable_since >= self._VFD_CONFIRM_SECS:
+                self.target_vfd_rpm = VFD_SPEEDS.get(label, 0)
 
             # ── Timer logic (your original logic, production-safe) ──
             if label == "jaw partially filled":
