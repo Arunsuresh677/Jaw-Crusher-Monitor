@@ -159,7 +159,7 @@ async def _vfd_background_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Starting Crusher Monitor backend...")
-    log.info("Camera NOT auto-started. Call POST /api/camera/restart to connect.")
+    log.info("Starting Crusher Monitor — camera will auto-start after model load.")
 
     # Init database
     await init_db()
@@ -175,6 +175,10 @@ async def lifespan(app: FastAPI):
 
     # Connect VFD Modbus
     await vfd_controller.connect()
+
+    # Auto-start camera on boot so the system resumes after a power cut
+    crusher_camera.start()
+    log.info("Camera auto-started on boot.")
 
     # Start background tasks
     task_db  = asyncio.create_task(_db_background_task())
