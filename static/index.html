@@ -77,6 +77,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .g2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
 .gap{margin-bottom:14px}
 
 /* ── Status display ── */
@@ -318,6 +319,9 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
           <span class="sys-badge" :class="sysBadgeCls">
             <span class="sys-dot"></span>{{ sysBadgeTxt }}
           </span>
+          <span class="sys-badge" :class="wsConnected?'run':'stop'" style="font-size:10px">
+            <span class="sys-dot"></span>{{ wsConnected?'WS LIVE':'WS OFF' }}
+          </span>
           <span class="sys-time">{{ now }}</span>
         </div>
       </header>
@@ -394,7 +398,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
               <span class="card-title" style="margin:0">📅 TODAY'S PRODUCTION</span>
               <span class="link-sm" @click="pg='analytics'">Reports →</span>
             </div>
-            <div class="g4">
+            <div class="g5">
               <div>
                 <div class="stat-label">🕐 Runtime</div>
                 <div class="stat-val">{{ c.timer_run||'00:00:00' }}</div>
@@ -414,6 +418,11 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
                 <div class="stat-label">📈 Availability</div>
                 <div class="stat-val">{{ c.availability_pct||0 }}%</div>
                 <div class="stat-sub">OEE metric</div>
+              </div>
+              <div>
+                <div class="stat-label">⚖ Tonnage</div>
+                <div class="stat-val">{{ c.tonnage_actual||0 }} t</div>
+                <div class="stat-sub">Current shift</div>
               </div>
             </div>
           </div>
@@ -649,11 +658,18 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
               </div>
 
               <div class="card">
-                <div class="card-title">⚙ CAMERA SETTINGS</div>
-                <div class="sr"><span class="sr-k">AI Model</span><span class="sr-v">YOLOv8 · best.pt</span></div>
+                <div class="card-title">⚙ CAMERA &amp; VFD CONFIG</div>
+                <div class="sr"><span class="sr-k">AI Model</span><span class="sr-v">{{ cfg.model||'YOLOv8 best.pt' }}</span></div>
                 <div class="sr"><span class="sr-k">Target FPS</span><span class="sr-v">10 fps</span></div>
-                <div class="sr"><span class="sr-k">Transport</span><span class="sr-v">RTSP / TCP</span></div>
+                <div class="sr"><span class="sr-k">RTSP Host</span><span class="sr-v" style="word-break:break-all;font-size:11px">{{ cfg.rtsp_host||'—' }}</span></div>
                 <div class="sr"><span class="sr-k">Conf threshold</span><span class="sr-v">0.50</span></div>
+                <div class="sr"><span class="sr-k">VFD Profile</span><span class="sr-v">{{ cfg.vfd_profile||'—' }}</span></div>
+                <div class="sr"><span class="sr-k">VFD Mode</span><span class="sr-v">{{ cfg.vfd_mode||'—' }}</span></div>
+                <div class="sr"><span class="sr-k">VFD Port</span><span class="sr-v" style="font-family:monospace">{{ cfg.vfd_port||'—' }}</span></div>
+                <div class="sr"><span class="sr-k">VFD Max RPM</span><span class="sr-v">{{ cfg.vfd_max_rpm||'—' }}</span></div>
+                <div class="sr"><span class="sr-k">MJPEG Stream</span>
+                  <a class="sr-v" style="color:var(--blue);font-size:11px" :href="piUrl+'/stream/mjpeg'" target="_blank" rel="noopener">Open stream →</a>
+                </div>
               </div>
             </div>
           </div>
@@ -681,7 +697,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
             </div>
           </div>
 
-          <div class="card">
+          <div class="card gap">
             <div class="card-title">📋 MACHINE STATE CHANGE LOG</div>
             <div v-if="history.length===0" class="no-data">No state transitions recorded</div>
             <div v-for="h in history.slice().reverse()" :key="h.at+''+h.from" class="hi">
@@ -691,6 +707,38 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
               <span style="font-size:11px;color:var(--t2)">· {{ h.jaw }}</span>
               <span class="hi-time">{{ h.at }}</span>
             </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title-row" style="margin-bottom:12px">
+              <span class="card-title" style="margin:0">🗃 ALERT DATABASE HISTORY</span>
+              <span style="font-size:11px;color:var(--t2)">Last 50 records from DB</span>
+            </div>
+            <div v-if="dbAlerts.length===0" class="no-data">No alert history in database yet</div>
+            <table v-else style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead>
+                <tr style="border-bottom:2px solid var(--border)">
+                  <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Timestamp</th>
+                  <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Level</th>
+                  <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Message</th>
+                  <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="a in dbAlerts" :key="a.id" style="border-bottom:1px solid var(--border)">
+                  <td style="padding:5px 8px;color:var(--t2);white-space:nowrap">{{ a.timestamp }}</td>
+                  <td style="padding:5px 8px">
+                    <span class="alert-tag" :class="'tag-'+(a.level||'').toUpperCase()" style="font-size:10px">{{ a.level }}</span>
+                  </td>
+                  <td style="padding:5px 8px">{{ a.message }}</td>
+                  <td style="padding:5px 8px">
+                    <span :style="{color:a.resolved?'var(--green)':'var(--yellow)',fontWeight:600}">
+                      {{ a.resolved ? '✓ Resolved' : '⚠ Active' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </template>
 
@@ -806,6 +854,42 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
                 <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/excel?period=1m'" target="_blank" rel="noopener" style="text-align:center">Excel</a>
               </div>
             </div>
+
+            <div class="card" style="margin-top:14px">
+              <div class="card-title-row" style="margin-bottom:12px">
+                <span class="card-title" style="margin:0">📊 PAST SHIFT REPORTS</span>
+                <span style="font-size:11px;color:var(--t2)">Last 20 shifts from DB</span>
+              </div>
+              <div v-if="dbShifts.length===0" class="no-data">No shift reports saved yet</div>
+              <div v-else style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+                  <thead>
+                    <tr style="border-bottom:2px solid var(--border)">
+                      <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Saved</th>
+                      <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Shift</th>
+                      <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Runtime</th>
+                      <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">Stuck</th>
+                      <th style="text-align:left;padding:4px 8px;color:var(--t2);font-weight:600">No Feed</th>
+                      <th style="text-align:right;padding:4px 8px;color:var(--t2);font-weight:600">Avail %</th>
+                      <th style="text-align:right;padding:4px 8px;color:var(--t2);font-weight:600">Tonnage</th>
+                      <th style="text-align:right;padding:4px 8px;color:var(--t2);font-weight:600">Alerts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="s in dbShifts" :key="s.id" style="border-bottom:1px solid var(--border)">
+                      <td style="padding:5px 8px;color:var(--t2);white-space:nowrap">{{ (s.timestamp||'').split(' ')[0] }}</td>
+                      <td style="padding:5px 8px;text-transform:capitalize">{{ s.shift_type }}</td>
+                      <td style="padding:5px 8px;font-variant-numeric:tabular-nums">{{ s.total_runtime }}</td>
+                      <td style="padding:5px 8px;font-variant-numeric:tabular-nums;color:var(--red)">{{ s.total_stuck }}</td>
+                      <td style="padding:5px 8px;font-variant-numeric:tabular-nums;color:var(--yellow)">{{ s.total_no_feed }}</td>
+                      <td style="padding:5px 8px;text-align:right;font-weight:700" :style="{color:s.availability_pct>=80?'var(--green)':s.availability_pct>=50?'var(--yellow)':'var(--red)'}">{{ s.availability_pct }}%</td>
+                      <td style="padding:5px 8px;text-align:right">{{ s.tonnage_actual }} t</td>
+                      <td style="padding:5px 8px;text-align:right" :style="{color:s.total_alerts>0?'var(--red)':'var(--t2)'}">{{ s.total_alerts }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </template>
         </template>
 
@@ -881,6 +965,11 @@ createApp({
     const history = ref([]);
     const camStatus = ref('unknown');
     const camFps  = ref(0);
+    const wsConnected = ref(false);
+    const dbAlerts  = ref([]);
+    const dbShifts  = ref([]);
+    const cfg       = ref({});
+    const dbAlertsTab = ref('active'); // 'active' | 'history'
 
     // ── Charts ───────────────────────────────────────────────
     const vfdChartRef       = ref(null);
@@ -1061,6 +1150,49 @@ createApp({
       }
     };
 
+    const fetchDbAlerts = async () => {
+      const d = await api('/api/db/alerts?limit=50');
+      if (d?.alerts) dbAlerts.value = d.alerts;
+    };
+
+    const fetchDbShifts = async () => {
+      const d = await api('/api/db/shifts?limit=20');
+      if (d?.shift_reports) dbShifts.value = d.shift_reports;
+    };
+
+    const fetchConfig = async () => {
+      const d = await api('/api/config');
+      if (d) cfg.value = d;
+    };
+
+    // ── WebSocket (real-time camera) ──────────────────────────
+    let ws = null;
+    const connectWS = () => {
+      if (ws && ws.readyState <= 1) return; // already connecting/open
+      const wsUrl = piUrl.value.replace(/^http/, 'ws') + '/ws/camera';
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen  = () => { wsConnected.value = true; };
+        ws.onclose = () => { wsConnected.value = false; ws = null; };
+        ws.onerror = () => { wsConnected.value = false; };
+        ws.onmessage = (ev) => {
+          try {
+            const d = JSON.parse(ev.data);
+            if (d.frame)            frame.value     = d.frame;
+            if (d.cam_status)       camStatus.value = d.cam_status;
+            if (d.camera_fps != null) camFps.value  = d.camera_fps;
+            // Merge full state into c (WS includes all crusher fields)
+            const { frame: _f, ...rest } = d;
+            c.value = rest;
+          } catch(e) {}
+        };
+      } catch(e) { wsConnected.value = false; }
+    };
+    const disconnectWS = () => {
+      if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+      wsConnected.value = false;
+    };
+
     // ── Charts ────────────────────────────────────────────────
     const initCharts = () => {
       nextTick(() => {
@@ -1084,8 +1216,8 @@ createApp({
 
     const updateCharts = () => {
       const logs   = vfdLog.value;
-      const labels = logs.map(l => (l.ts || '').split(' ')[1]?.slice(0, 5) || '');
-      const data   = logs.map(l => rpmToHz(l.vfd_rpm || 0));
+      const labels = logs.map(l => (l.timestamp || '').split(' ')[1]?.slice(0, 5) || '');
+      const data   = logs.map(l => rpmToHz(l.vfd_hz || 0));
       [vfdChI, anaChI].forEach(ch => {
         if (!ch) return;
         ch.data.labels = labels;
@@ -1125,15 +1257,28 @@ createApp({
     };
 
     // ── Lifecycle ─────────────────────────────────────────────
+    let wsReconnT = null;
     const startAll = () => {
       fetchCore();
       fetchVfdLog();
+      fetchDbAlerts();
+      fetchDbShifts();
+      fetchConfig();
+      connectWS();
       pollT = setInterval(fetchCore, 2000);
       histT = setInterval(fetchVfdLog, 30000);
+      // Reconnect WS if it drops; check every 5s
+      wsReconnT = setInterval(() => {
+        if (!wsConnected.value) connectWS();
+      }, 5000);
+      // Refresh DB data every 60s
+      setInterval(fetchDbAlerts, 60000);
+      setInterval(fetchDbShifts, 60000);
     };
 
     const stopAll = () => {
-      clearInterval(pollT); clearInterval(histT);
+      clearInterval(pollT); clearInterval(histT); clearInterval(wsReconnT);
+      disconnectWS();
     };
 
     onMounted(() => {
@@ -1147,7 +1292,8 @@ createApp({
     return {
       piUrl, piUrlEdit, authed, lu, lp, loginBusy, loginErr, doLogin, doLogout,
       pg, now, showManual, showSet, manHz, alertFilter, aTab,
-      c, vfd, frame, history, camStatus, camFps,
+      c, vfd, frame, history, camStatus, camFps, wsConnected,
+      dbAlerts, dbShifts, cfg, dbAlertsTab,
       confPct, jawLblDisp, aiDisp, aiShort, aiColor, aiCls, crusherCls, cStatusDesc,
       targetHz, actualHz, activeChip,
       alerts, alertCount, critCount, warnCount, infoCount, filtAlerts,
