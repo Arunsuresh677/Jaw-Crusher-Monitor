@@ -486,8 +486,8 @@ async def vfd_set(rpm: int):
     Manually override the VFD speed (0–1000 RPM).
     0 sends the stop command.
     """
-    if rpm < 0 or rpm > 1000:
-        return JSONResponse({"ok": False, "error": "rpm must be 0–1000"}, status_code=400)
+    if rpm < 0 or rpm > 1500:
+        return JSONResponse({"ok": False, "error": "rpm must be 0–1500"}, status_code=400)
     vfd_controller._last_rpm = -1         # force write even if value unchanged
     await vfd_controller.set_speed(rpm)
     return JSONResponse({"ok": True, "rpm": rpm})

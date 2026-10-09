@@ -769,7 +769,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
           </template>
 
           <template v-if="aTab==='reports'">
-            <div class="card">
+            <div class="card gap">
               <div class="card-title-row">
                 <span class="card-title" style="margin:0">📋 SHIFT REPORT</span>
                 <button class="btn btn-outline btn-sm" @click="resetShift">🔄 Reset Shift</button>
@@ -778,6 +778,32 @@ body{font-family:'Inter',-apple-system,sans-serif;background:var(--page);color:v
                 <div><div class="stat-label">Current Shift</div><div class="stat-val" style="font-size:20px">{{ c.shift?.shift||'—' }}</div><div class="stat-sub">Started {{ c.shift?.start||'—' }}</div></div>
                 <div><div class="stat-label">Elapsed</div><div class="stat-val" style="font-size:20px">{{ c.shift?.elapsed_minutes||0 }} min</div><div class="stat-sub">Shift duration</div></div>
                 <div><div class="stat-label">Session Start</div><div class="stat-val" style="font-size:14px">{{ c.session_start||'—' }}</div><div class="stat-sub">First NORMAL: {{ c.first_run_at||'Not yet' }}</div></div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/shift-pdf'" target="_blank" rel="noopener">📄 Shift PDF</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/shift-csv'" target="_blank" rel="noopener">📊 Shift CSV</a>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">📥 DOWNLOAD REPORTS</div>
+              <div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr;align-items:center;gap:8px 10px;margin-top:8px">
+                <span style="font-size:11px;color:var(--t2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Period</span>
+                <span style="font-size:11px;color:var(--t2);font-weight:600;text-align:center">PDF</span>
+                <span style="font-size:11px;color:var(--t2);font-weight:600;text-align:center">CSV</span>
+                <span style="font-size:11px;color:var(--t2);font-weight:600;text-align:center">Excel</span>
+                <span style="font-size:13px">Last 24 h</span>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/pdf?period=1d'" target="_blank" rel="noopener" style="text-align:center">PDF</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/csv?period=1d'" target="_blank" rel="noopener" style="text-align:center">CSV</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/excel?period=1d'" target="_blank" rel="noopener" style="text-align:center">Excel</a>
+                <span style="font-size:13px">Last 7 days</span>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/pdf?period=1w'" target="_blank" rel="noopener" style="text-align:center">PDF</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/csv?period=1w'" target="_blank" rel="noopener" style="text-align:center">CSV</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/excel?period=1w'" target="_blank" rel="noopener" style="text-align:center">Excel</a>
+                <span style="font-size:13px">Last 30 days</span>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/pdf?period=1m'" target="_blank" rel="noopener" style="text-align:center">PDF</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/csv?period=1m'" target="_blank" rel="noopener" style="text-align:center">CSV</a>
+                <a class="btn btn-outline btn-sm" :href="piUrl+'/api/reports/excel?period=1m'" target="_blank" rel="noopener" style="text-align:center">Excel</a>
               </div>
             </div>
           </template>
@@ -1010,20 +1036,20 @@ createApp({
 
     // ── Fetch ─────────────────────────────────────────────────
     const fetchCore = async () => {
-      const [cr, vr, hr, sr] = await Promise.all([
+      const [cr, vr, hr, sr, camr] = await Promise.all([
         api('/api/crusher'),
         api('/api/vfd/status'),
         api('/api/history'),
         api('/api/snapshot'),
+        api('/api/camera/status'),
       ]);
-      if (cr) c.value = cr;
-      if (vr) vfd.value = vr;
+      if (cr)  c.value = cr;
+      if (vr)  vfd.value = vr;
       if (hr?.history) history.value = hr.history;
       if (sr?.frame)   frame.value = sr.frame;
-      // camera status from crusher state
-      if (cr) {
-        camStatus.value = cr.cam_status || 'unknown';
-        camFps.value    = cr.camera_fps || 0;
+      if (camr) {
+        camStatus.value = camr.cam_status || 'unknown';
+        camFps.value    = camr.camera_fps || 0;
       }
     };
 
@@ -1072,7 +1098,7 @@ createApp({
 
     // ── Actions ───────────────────────────────────────────────
     const stopVfd    = () => api('/api/vfd/stop',        { method: 'POST' });
-    const resetFault = () => api('/api/vfd/reset',       { method: 'POST' });
+    const resetFault = () => api('/api/vfd/reset-fault',  { method: 'POST' });
     const restartCam = () => api('/api/camera/restart',  { method: 'POST' });
     const resetShift = () => { if (confirm('Reset shift? Saves current report and resets timers.')) api('/api/shift/reset', { method: 'POST' }); };
 
