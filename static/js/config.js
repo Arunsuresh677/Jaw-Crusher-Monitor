@@ -17,7 +17,7 @@ export const APP = {
    *  'api'  → services/apiService.js  (FastAPI REST + WebSocket on the Raspberry Pi)
    */
   dataSource: 'api',
-  apiBase: 'http://192.168.0.234:8000', // Raspberry Pi backend
+  apiBase: '', // relative — uses the same host the page was opened from
   wsPath: '/ws/camera',
 
   /** Plant operating window used by analytics (24h clock). */

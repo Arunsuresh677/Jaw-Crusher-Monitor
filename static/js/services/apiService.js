@@ -95,7 +95,10 @@ async function request(path, opts = {}) {
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 function connect() {
-  const url = APP.apiBase.replace(/^http/, 'ws') + APP.wsPath;
+  const wsBase = APP.apiBase
+    ? APP.apiBase.replace(/^http/, 'ws')
+    : (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+  const url = wsBase + APP.wsPath;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
