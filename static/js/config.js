@@ -27,7 +27,7 @@ export const APP = {
   vfdLimits: { min: 0, max: 50 },
 
   /** Demo credentials for the frontend prototype (no real security). */
-  demoUser: { username: 'admin', password: '12345' },
+  demoUser: { username: 'admin', password: 'admin123' },
 
   /**
    * Empty-speed settings PIN (prototype). Only a hash is kept in the code and
