@@ -414,6 +414,166 @@ async def camera_status():
     })
 
 
+@app.get("/api/v1/live")
+async def pwa_live():
+    """PWA dashboard: live snapshot in the shape the JS service expects."""
+    cam  = crusher_camera.get_state()
+    cs   = crusher_logic.get_state()
+    vfd  = vfd_controller.status
+
+    machine_status = cs.get("machine_status", "STOPPED")
+    jaw_label      = cs.get("jaw_label", "unknown")
+    jaw_conf       = cs.get("jaw_conf", 0.0)
+    target_rpm     = cs.get("target_vfd_rpm", 0)
+    target_hz      = round(target_rpm * 50 / 1500, 1)
+    actual_rpm     = vfd.get("actual_rpm") or 0
+    actual_hz      = round(actual_rpm * 50 / 1500, 1)
+    sw             = vfd.get("status_word") or {}
+
+    MACHINE_TO_CRUSHER = {
+        "NORMAL": "RUNNING", "STONE STUCK": "WARNING",
+        "NO RAW MATERIAL": "RUNNING", "STOPPED": "STOPPED", "FAULT": "FAULT",
+    }
+    JAW_TO_AI = {
+        "jaw filled": "FULL", "jaw partially filled": "PARTIAL", "jaw empty": "EMPTY",
+    }
+
+    if vfd.get("connected"):
+        if sw.get("tripped"):  drive_status = "Fault"
+        elif sw.get("running"): drive_status = "Running"
+        else:                   drive_status = "Stopped"
+    elif machine_status == "FAULT":                                        drive_status = "Fault"
+    elif machine_status in ("NORMAL", "STONE STUCK", "NO RAW MATERIAL"):   drive_status = "Running"
+    else:                                                                   drive_status = "Stopped"
+
+    ai_state = JAW_TO_AI.get(jaw_label, "EMPTY")
+
+    return JSONResponse({
+        "timestamp" : datetime.now().isoformat() + "Z",
+        "connection": {"source": "api", "online": cam.get("cam_status") == "live"},
+        "crusher"   : {
+            "status"        : MACHINE_TO_CRUSHER.get(machine_status, "STOPPED"),
+            "motorCurrentA" : None,
+        },
+        "feeder"    : {
+            "aiState"    : ai_state,
+            "confidence" : round(jaw_conf * 100),
+            "detectedAt" : datetime.now().isoformat() + "Z",
+            "detecting"  : cam.get("cam_status") == "live",
+        },
+        "vfd"       : {
+            "requestedMode": "AUTO",
+            "mode"         : "AUTO",
+            "manualHz"     : target_hz,
+            "commandHz"    : target_hz,
+            "outputHz"     : actual_hz if actual_hz > 0 else target_hz,
+            "autoHz"       : target_hz,
+            "manualAllowed": ai_state == "EMPTY",
+            "atMax"        : target_rpm >= 1290,
+            "interlock"    : machine_status == "FAULT",
+            "driveStatus"  : drive_status,
+        },
+    })
+
+
+@app.get("/api/v1/vfd/trend")
+async def pwa_vfd_trend(minutes: int = 10):
+    """PWA dashboard: VFD Hz trend — [{t: epoch_ms, hz: float}]."""
+    data = await get_vfd_history(minutes)
+    trend = []
+    for row in reversed(data):   # DB returns DESC, we need ASC
+        try:
+            ts = datetime.strptime(row["timestamp"], "%Y-%m-%d %H:%M:%S")
+            hz = round(int(row["vfd_hz"]) * 50 / 1500, 1)   # vfd_hz column stores RPM
+            trend.append({"t": int(ts.timestamp() * 1000), "hz": hz})
+        except Exception:
+            pass
+    return JSONResponse(trend)
+
+
+@app.get("/api/v1/alerts")
+async def pwa_alerts(limit: int = 100):
+    """PWA dashboard: alert history in the shape the JS service expects."""
+    data = await get_alerts_history(limit)
+    alerts = []
+    for a in data:
+        alert_id = a.get("alert_id", "UNKNOWN")
+        alerts.append({
+            "id"         : str(a["id"]),
+            "severity"   : a.get("level", "info"),
+            "type"       : alert_id.upper().replace("-", "_"),
+            "title"      : alert_id.replace("-", " ").replace("_", " ").title(),
+            "description": a.get("message", ""),
+            "time"       : a["timestamp"].replace(" ", "T") + "Z",
+            "read"       : bool(a.get("resolved", 0)),
+            "source"     : "Jaw Crusher",
+        })
+    return JSONResponse(alerts)
+
+
+@app.get("/api/v1/analytics")
+async def pwa_analytics(from_date: str = None, to_date: str = None, label: str = ""):
+    """PWA dashboard: analytics summary for a date range."""
+    from datetime import date as _date
+    today     = _date.today().isoformat()
+    from_date = from_date or today
+    to_date   = to_date   or today
+
+    summary  = await get_period_summary(from_date, to_date)
+    vfd_data = await get_vfd_history(1440)  # last 24h of VFD samples
+
+    run      = summary.get("run_secs",     0) or 0
+    stuck    = summary.get("stuck_secs",   0) or 0
+    no_feed  = summary.get("no_feed_secs", 0) or 0
+    active   = run + stuck + no_feed
+    avail    = summary.get("availability_pct", 0.0)
+
+    # avg/peak Hz — vfd_hz column stores RPM, convert to Hz
+    avg_hz  = round((summary.get("avg_vfd_hz", 0) or 0) * 50 / 1500, 1)
+    peak_hz = round((summary.get("peak_vfd_hz", 0) or 0) * 50 / 1500, 1)
+
+    trend = []
+    for row in reversed(vfd_data):
+        ts_str = row.get("timestamp", "")
+        if ts_str[:10] < from_date or ts_str[:10] > to_date:
+            continue
+        try:
+            ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            hz = round(int(row["vfd_hz"]) * 50 / 1500, 1)
+            trend.append({"t": int(ts.timestamp() * 1000), "hz": hz})
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "period"        : {"from": from_date, "to": to_date, "label": label,
+                           "days": 1, "generatedAt": datetime.now().isoformat()},
+        "source"        : "api",
+        "runtimeSec"    : run,
+        "elapsedSec"    : active,
+        "downtimeSec"   : stuck + no_feed,
+        "feederRuntimeSec": run,
+        "vfdRuntimeSec" : run,
+        "outputT"       : 0,
+        "avgTph"        : 0,
+        "states"        : {"EMPTY": no_feed, "PARTIAL": stuck, "FULL": run},
+        "detections"    : {"EMPTY": 0, "PARTIAL": 0, "FULL": 0},
+        "vfd"           : {
+            "avgHz"        : avg_hz,
+            "minHz"        : 0,
+            "maxHz"        : peak_hz,
+            "trend"        : trend,
+            "manualPeriods": [],
+        },
+        "stopEvents"    : [],
+        "alerts"        : {
+            "total": summary.get("total_alerts", 0), "fault": 0,
+            "warning": 0, "info": summary.get("total_alerts", 0), "manual": 0,
+        },
+        "oee"           : {"availability": avail, "performance": 0, "quality": 0, "overall": 0},
+        "days"          : [],
+    })
+
+
 @app.get("/api/v1/machines/feeder-1/status")
 async def flutter_machine_status():
     """Flutter app compatible endpoint"""
