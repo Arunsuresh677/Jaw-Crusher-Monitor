@@ -114,21 +114,6 @@ function connect() {
     const { frame: _f, ...state } = d;
     const snap = piStateToSnap(state);
     handlers.onLive?.(snap, { trendSample: true });
-
-    // Surface active alerts from WS state as onAlert events
-    const activeAlerts = state.active_alerts || [];
-    for (const a of activeAlerts) {
-      handlers.onAlert?.({
-        id         : String(a.id || a.alert_id || Math.random()),
-        severity   : a.level || 'info',
-        type       : (a.id || a.alert_id || 'ALERT').toUpperCase().replace(/-/g, '_'),
-        title      : (a.id || a.alert_id || 'Alert').replace(/_/g, ' ').replace(/-/g, ' '),
-        description: a.message || '',
-        time       : new Date().toISOString(),
-        read       : false,
-        source     : 'Jaw Crusher',
-      });
-    }
   };
 
   ws.onclose = () => {
