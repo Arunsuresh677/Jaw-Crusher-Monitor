@@ -214,6 +214,13 @@ app.add_middleware(
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# Serve PWA assets at root paths (/css, /js, /icons, /vendor, /assets)
+# The multi-file ES-module app references these as absolute root paths.
+for _sub in ("css", "js", "icons", "vendor", "assets"):
+    _sub_dir = os.path.join(STATIC_DIR, _sub)
+    if os.path.isdir(_sub_dir):
+        app.mount(f"/{_sub}", StaticFiles(directory=_sub_dir), name=_sub)
+
 
 @app.get("/health")
 async def health():
@@ -825,7 +832,7 @@ async def mjpeg_stream():
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace;boundary=frame")
 
 
-# ── Dashboard ─────────────────────────────────────────────────
+# ── Dashboard + PWA root files ────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
@@ -834,6 +841,25 @@ async def dashboard():
         with open(html_path, encoding="utf-8") as f:
             return HTMLResponse(f.read())
     return HTMLResponse("<h1>Dashboard not found.</h1>")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    """PWA service worker — must be served at root scope."""
+    path = os.path.join(STATIC_DIR, "sw.js")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return Response(f.read(), media_type="application/javascript")
+    return Response("", media_type="application/javascript")
+
+
+@app.get("/manifest.webmanifest")
+async def web_manifest():
+    path = os.path.join(STATIC_DIR, "manifest.webmanifest")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return Response(f.read(), media_type="application/manifest+json")
+    return Response("{}", media_type="application/manifest+json")
 
 
 # ── Entry Point ───────────────────────────────────────────────
